@@ -1,7 +1,10 @@
-extracted_mask/
-extracted_mask2/
+extracted_masks/
+extracted_masks2/
 saved_model/
+weights/
 synthesize_SOD_density_map_0_45_threshold/
 synthesize_SOD_density_map_0_45_threshold_val/
 *.json
 **/*.pth
+**/*.jpg
+**/*.png
