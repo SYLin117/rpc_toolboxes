@@ -12,9 +12,11 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage
 from tqdm import tqdm
+from config import Config
+import pathlib
 
 NUM_CATEGORIES = 200
-GENERATED_NUM = 50000
+GENERATED_NUM = 10000
 
 CATEGORIES = ['__background__', '1_puffed_food', '2_puffed_food', '3_puffed_food', '4_puffed_food', '5_puffed_food',
               '6_puffed_food', '7_puffed_food',
@@ -105,11 +107,11 @@ def check_iou(annotations, box, threshold=0.5):
 
     cx1, cy1, cw, ch = box
     cx2, cy2 = cx1 + cw, cy1 + ch
-    carea = cw * ch
+    carea = cw * ch  # new object
     for ann in annotations:
         x1, y1, w, h = ann['bbox']
         x2, y2 = x1 + w, y1 + h
-        area = w * h
+        area = w * h  # object in ann
         inter_x1 = max(x1, cx1)
         inter_y1 = max(y1, cy1)
         inter_x2 = min(x2, cx2)
@@ -117,12 +119,16 @@ def check_iou(annotations, box, threshold=0.5):
 
         inter_area = max(0, inter_x2 - inter_x1) * max(0, inter_y2 - inter_y1)
         iou = inter_area / (carea + area - inter_area + 1e-8)  # avoid division by zero
-        if iou > threshold:
+
+        iou1 = inter_area / (carea + 1e-8)  # 重疊區域佔舊object的比例
+        iou2 = inter_area / (area + 1e-8)  # 重疊區域佔新object的比例
+
+        if iou > threshold or iou1 > threshold or iou2 > threshold:
             return False
     return True
 
 
-def sample_select_object_index(category, paths, ratio_annotations, threshold=0.45):
+def sample_select_object_index(category, paths, ratio_annotations, threshold=0.1):
     """
     randomly choose one file that match threshold
     Args:
@@ -187,11 +193,12 @@ def gaussian_filter_density(gt):
     return density
 
 
-def synthesize(strategics, save_json_file='', output_dir='', save_mask=False):
+def synthesize(strategics, save_json_file='', output_dir='', save_mask=False, train_json=None, train_imgs_dir=None,
+               train_imgs_mask_dir=None, file_filter=None):
     with open('ratio_annotations2.json') as fid:
         ratio_annotations = json.load(fid)
 
-    with open('/media/ian/WD/datasets/RPC_DATSET/retail_product_checkout/instances_train2019.json') as fid:
+    with open(train_json) as fid:
         data = json.load(fid)
     images = {}
     for x in data['images']:
@@ -204,9 +211,12 @@ def synthesize(strategics, save_json_file='', output_dir='', save_mask=False):
     # object_paths = glob.glob(
     #     os.path.join('/media/ian/WD/PythonProject/DP-Net/acm-mm-2019-ACO-master/toolboxes/extracted_masks/crop_images/',
     #                  '*.jpg'))
-    object_paths = glob.glob(
-        os.path.join('/media/ian/WD/datasets/RPC_DATSET/retail_product_checkout/train2019/',
-                     '*.jpg'))
+    object_paths = list()
+    if not file_filter:
+        object_paths = glob.glob(os.path.join(train_imgs_dir, '*.jpg'))
+    else:
+        for filter in file_filter:
+            object_paths += glob.glob(os.path.join(train_imgs_dir, filter))
 
     object_category_paths = defaultdict(list)
     for path in object_paths:
@@ -232,12 +242,10 @@ def synthesize(strategics, save_json_file='', output_dir='', save_mask=False):
             for _ in range(count):
                 paths = object_category_paths[category]
 
-                object_path = sample_select_object_index(category, paths, ratio_annotations, threshold=0.45)
+                object_path = sample_select_object_index(category, paths, ratio_annotations, threshold=0.1)
 
                 name = os.path.basename(object_path)
-                mask_path = os.path.join(
-                    '/media/ian/WD/PythonProject/DP-Net/acm-mm-2019-ACO-master/toolboxes/extracted_masks2/masks/',
-                    '{}.png'.format(name.split('.')[0]))
+                mask_path = os.path.join(train_imgs_mask_dir, '{}.png'.format(name.split('.')[0]))
 
                 obj = Image.open(object_path)
                 mask = Image.open(mask_path).convert('L')
@@ -285,11 +293,11 @@ def synthesize(strategics, save_json_file='', output_dir='', save_mask=False):
                 pad = 2
                 pos_x, pos_y = generated_position(bg_width, bg_height, w, h, pad)
                 start = time.time()
-                threshold = 0.5
+                threshold = 0.1
                 while not check_iou(synthesize_annotations, box=(pos_x, pos_y, w, h), threshold=threshold):
-                    if (time.time() - start) > 3:  # cannot find a valid position in 3 seconds
+                    if (time.time() - start) > 10:  # cannot find a valid position in 3 seconds
                         start = time.time()
-                        threshold += 0.1
+                        threshold += 0.05
                         continue
                     pos_x, pos_y = generated_position(bg_width, bg_height, w, h, pad)
 
@@ -325,11 +333,11 @@ def synthesize(strategics, save_json_file='', output_dir='', save_mask=False):
 
         assert gt.shape[0] == 200 and gt.shape[1] == 200
 
-        density = gaussian_filter_density(gt)
+        # density = gaussian_filter_density(gt) # gussian to gt
         image_name = '{}.jpg'.format(image_id)
 
         bg_img.save(os.path.join(output_dir, image_name))
-        np.save(os.path.join(output_dir, 'density_maps', image_id), density)
+        # np.save(os.path.join(output_dir, 'density_maps', image_id), density) # save density
 
         # plt.subplot(121)
         # plt.imshow(density, cmap='gray')
@@ -414,4 +422,15 @@ if __name__ == '__main__':
     num_threads = args.count
     sub_strategics = strategics[args.local_rank::num_threads]
     save_file = 'sod_synthesize_{}_{}.json'.format(version, args.local_rank)
-    synthesize(sub_strategics, save_file, output_dir)
+
+    config = Config()
+    DATASET_ROOT = config.get_dataset_root()
+    CURRENT_ROOT = str(pathlib.Path().resolve())
+    rpc_train_json = os.path.join(DATASET_ROOT, 'retail_product_checkout', 'instances_train2019.json')
+    rpc_train = os.path.join(DATASET_ROOT, 'retail_product_checkout', 'train2019')
+    rpc_train_mask = os.path.join(CURRENT_ROOT, 'extracted_masks', 'masks')
+    synthesize(sub_strategics, save_file, output_dir,
+               train_json=rpc_train_json,
+               train_imgs_dir=rpc_train,
+               train_imgs_mask_dir=rpc_train_mask,
+               file_filter=config.img_filter)

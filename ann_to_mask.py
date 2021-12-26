@@ -7,6 +7,10 @@ import os
 import numpy as np
 import random
 
+"""
+將自己標記的ann轉換成mask作為SOD模型的training資料
+"""
+
 cocoRoot = 'D:\\datasets\\retail_product_checkout\\crop_subset'
 
 dataType = "train2017"

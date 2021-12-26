@@ -4,7 +4,7 @@ saved_model/
 weights/
 synthesize_SOD_density_map_0_45_threshold/
 synthesize_SOD_density_map_0_45_threshold_val/
-*.json
+**/*.json
 **/*.pth
 **/*.jpg
 **/*.png

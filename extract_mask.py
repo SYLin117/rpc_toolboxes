@@ -15,6 +15,8 @@ import torch
 import torchvision.transforms as T
 from torch.autograd import Variable
 
+from config import Config
+
 
 def normPRED_np(d):
     ma = np.max(d)
@@ -119,7 +121,7 @@ def do_extract(path):
     pred.astype(np.uint8)
     ret, thresh = cv2.threshold(pred, 125, 255, cv2.THRESH_BINARY)
     thresh = np.array(thresh, np.uint8)
-    ##perform morphological operation
+    ## perform morphological operation
     rect_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 30))
     threshed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, rect_kernel)
     thresh_stack = np.stack((thresh,) * 3, axis=-1)
@@ -143,7 +145,8 @@ def do_extract(path):
     # cv2.imshow('save_image', save_image)
     # cv2.waitKey()
     # cv2.destroyWindow('save_image')
-    cv2.imwrite(os.path.join(output_dir, os.path.basename(path).split('.')[0] + '.png'), save_image)  ## original image size mask
+    cv2.imwrite(os.path.join(output_dir, os.path.basename(path).split('.')[0] + '.png'),
+                save_image)  ## original image size mask
 
     # masked_img = origin_img * filled[:, :, None]
     # compare_img = np.concatenate([origin_img, masked_img], axis=1)
@@ -228,7 +231,13 @@ if __name__ == '__main__':
         os.makedirs(crop_mask_dir)
 
     categories = [i + 1 for i in range(200)]
-    paths = glob.glob(os.path.join(args.images_dir, '*.jpg'))
+    config = Config()
+    paths = list()
+    if not config.img_filter:
+        paths = glob.glob(os.path.join(args.images_dir, '*.jpg'))
+    else:
+        for filter in config.img_filter:
+            paths += glob.glob(os.path.join(args.images_dir, filter))
     ## version 1
     # detector = cv2.ximgproc.createStructuredEdgeDetection(args.model_file)
     ## version 2
