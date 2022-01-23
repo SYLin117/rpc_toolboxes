@@ -9,13 +9,14 @@ import numpy as np
 from scipy import ndimage
 from tqdm import tqdm
 
-from u2net_model import U2NET, U2NETP
-
 import torch
 import torchvision.transforms as T
 from torch.autograd import Variable
 
 from config import Config
+
+from u2net_model import U2NET, U2NETP
+from unet import Unet
 
 
 def normPRED_np(d):
@@ -86,9 +87,15 @@ def do_extract(path):
     # -------------------------
     # start extracting object mask, using SOD model
     # -------------------------
-    model_name = 'u2net'
-    model_dir = 'weights/u2net_best.pth'
-    net = U2NET(in_ch=3, out_ch=1)
+    model_name = 'unet'
+    if model_name == 'u2net':
+        model_dir = 'weights/u2net_best.pth'
+        net = U2NET(in_ch=3, out_ch=1)
+    elif model_name == 'unet':
+        model_dir = 'weights/unet.pth'
+        net = Unet(n_channels=3, n_classes=1)
+    else:
+        raise Exception('model not implemented.')
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     tf = T.Compose([
         T.ToPILImage(),
@@ -111,10 +118,15 @@ def do_extract(path):
         inputs_test = Variable(img_tf.cuda())
     else:
         inputs_test = Variable(img_tf)
-    d1, d2, d3, d4, d5, d6, d7 = net(inputs_test)
 
-    d1_np = d1.cpu().detach().numpy()
-    pred = d1_np[:, 0, :, :]
+    pred_tf = None
+    if model_name == 'u2net':
+        pred_tf, _, _, _, _, _, _ = net(inputs_test)
+    elif model_name == 'unet':
+        pred_tf = net(inputs_test)
+
+    pred_np = pred_tf.cpu().detach().numpy()
+    pred = pred_np[:, 0, :, :]
     pred = normPRED_np(pred)
     pred = pred.squeeze()
     pred = pred * 255
@@ -125,11 +137,11 @@ def do_extract(path):
     rect_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 30))
     threshed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, rect_kernel)
     thresh_stack = np.stack((thresh,) * 3, axis=-1)
-    Contours, Hierarchy = cv2.findContours(threshed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    for cnt in Contours:
-        hull = cv2.convexHull(cnt)
-        # cv2.drawContours(thresh_stack, [hull], -1, (255, 255, 255), 1)
-        cv2.drawContours(thresh_stack, [hull], -1, color=(255, 255, 255), thickness=cv2.FILLED)
+    ## 利用contour將多個區塊連起來
+    # Contours, Hierarchy = cv2.findContours(threshed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    # for cnt in Contours:
+    #     hull = cv2.convexHull(cnt)
+    #     cv2.drawContours(thresh_stack, [hull], -1, color=(255, 255, 255), thickness=cv2.FILLED)
     thresh_stack = cv2.resize(thresh_stack, (crop_x2 - crop_x1, crop_y2 - crop_y1), interpolation=cv2.INTER_AREA)
     filled = cv2.cvtColor(thresh_stack, cv2.COLOR_BGR2GRAY)
     filled = filled / 255
@@ -148,9 +160,9 @@ def do_extract(path):
     cv2.imwrite(os.path.join(output_dir, os.path.basename(path).split('.')[0] + '.png'),
                 save_image)  ## original image size mask
 
-    # masked_img = origin_img * filled[:, :, None]
-    # compare_img = np.concatenate([origin_img, masked_img], axis=1)
-    # cv2.imwrite(os.path.join(compare_dir, os.path.basename(path)), compare_img)
+    masked_img = origin_img * filled[:, :, None]
+    compare_img = np.concatenate([origin_img, masked_img], axis=1)
+    cv2.imwrite(os.path.join(compare_dir, os.path.basename(path)), compare_img)
 
     # cv2.imwrite(os.path.join(crop_dir, os.path.basename(path)), origin_img)  # crop images
     # cv2.imwrite(os.path.join(crop_mask_dir, os.path.basename(path).split('.')[0] + '.png'),
@@ -233,11 +245,11 @@ if __name__ == '__main__':
     categories = [i + 1 for i in range(200)]
     config = Config()
     paths = list()
-    if not config.img_filter:
+    if not config.img_filters:
         paths = glob.glob(os.path.join(args.images_dir, '*.jpg'))
     else:
-        for filter in config.img_filter:
-            paths += glob.glob(os.path.join(args.images_dir, filter))
+        for img_filter in config.img_filters:
+            paths += glob.glob(os.path.join(args.images_dir, img_filter))
     ## version 1
     # detector = cv2.ximgproc.createStructuredEdgeDetection(args.model_file)
     ## version 2

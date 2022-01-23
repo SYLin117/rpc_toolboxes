@@ -16,7 +16,7 @@ from config import Config
 import pathlib
 
 NUM_CATEGORIES = 200
-GENERATED_NUM = 10000
+GENERATED_NUM = 100
 
 CATEGORIES = ['__background__', '1_puffed_food', '2_puffed_food', '3_puffed_food', '4_puffed_food', '5_puffed_food',
               '6_puffed_food', '7_puffed_food',
@@ -65,6 +65,9 @@ CATEGORIES = ['__background__', '1_puffed_food', '2_puffed_food', '3_puffed_food
               '189_tissue', '190_tissue', '191_tissue', '192_tissue', '193_tissue', '194_stationery', '195_stationery',
               '196_stationery', '197_stationery',
               '198_stationery', '199_stationery', '200_stationery']
+
+np.random.seed(42)
+CAT_COLORS = (np.random.rand(200, 3) * 255).astype(np.uint8)
 
 
 def buy_strategic(counter):
@@ -421,16 +424,17 @@ if __name__ == '__main__':
     threads = []
     num_threads = args.count
     sub_strategics = strategics[args.local_rank::num_threads]
-    save_file = 'sod_synthesize_{}_{}.json'.format(version, args.local_rank)
-
     config = Config()
     DATASET_ROOT = config.get_dataset_root()
     CURRENT_ROOT = str(pathlib.Path().resolve())
-    rpc_train_json = os.path.join(DATASET_ROOT, 'retail_product_checkout', 'instances_train2019.json')
+    save_file = os.path.join(CURRENT_ROOT, 'retail_product_checkout',
+                             'sod_synthesize_{}_{}.json'.format(version, args.local_rank))
+    rpc_train_json = os.path.join(DATASET_ROOT, 'retail_product_checkout', 'instances_train2019.json') # rpc的train.json
     rpc_train = os.path.join(DATASET_ROOT, 'retail_product_checkout', 'train2019')
     rpc_train_mask = os.path.join(CURRENT_ROOT, 'extracted_masks', 'masks')
     synthesize(sub_strategics, save_file, output_dir,
                train_json=rpc_train_json,
                train_imgs_dir=rpc_train,
                train_imgs_mask_dir=rpc_train_mask,
-               file_filter=config.img_filter)
+               file_filter=config.img_filters,
+               save_mask=True)

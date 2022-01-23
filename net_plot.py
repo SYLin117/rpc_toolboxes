@@ -2,6 +2,10 @@ import matplotlib.pyplot as plt
 import os
 import pandas as pd
 
+'''
+電腦網路期末報告
+'''
+
 DATA_ROOT = f'C:\\Users\\ian\\Desktop\\ns3_test'
 types = ['cwnd', 'flight', 'rto', 'rtt', 'rx', 'ssthress', 'tx']
 type = 'ssthress'
@@ -15,7 +19,7 @@ idx_x = 0
 idx_y = 0
 nrows = 4
 ncols = 1
-fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(15, 10))
+fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(200, 20))
 for y in range(nrows):
     for x in range(ncols):
         tcp = tcp_versions[idx]
