@@ -23,6 +23,7 @@ import albumentations as albu
 from albumentations.pytorch.transforms import ToTensorV2
 
 
+
 def normPRED_np(d):
     ma = np.max(d)
     mi = np.min(d)
@@ -32,6 +33,9 @@ def normPRED_np(d):
 
 
 def do_extract(path, model_name='unet', morph_it=10):
+    global net
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     annotation = annotations[os.path.basename(path)]
     bbox = annotation['bbox']
     x, y, w, h = [int(x) for x in bbox]
@@ -54,19 +58,25 @@ def do_extract(path, model_name='unet', morph_it=10):
     # -------------------------
     # start extracting object mask, using SOD model
     # -------------------------
-    tracer_cfg = None
-    if model_name == 'u2net':
-        model_dir = 'weights/u2net_best.pth'
-        net = U2NET(in_ch=3, out_ch=1)
-    elif model_name == 'unet':
-        model_dir = 'weights/unet.pth'
-        net = Unet(n_channels=3, n_classes=1)
-    elif model_name == 'tracer0':
-        tracer_cfg = tracer.config.getConfig()
-        model_dir = 'weights/tracer0_best.pth'
-        net = tracer.TRACER(tracer_cfg)
-    else:
-        raise Exception('model not implemented.')
+    tracer_cfg = tracer.getConfig()
+    if net is None:
+        if model_name == 'u2net':
+            model_dir = 'weights/u2net_best.pth'
+            net = U2NET(in_ch=3, out_ch=1)
+        elif model_name == 'unet':
+            model_dir = 'weights/unet.pth'
+            net = Unet(n_channels=3, n_classes=1)
+        elif model_name == 'tracer0':
+            model_dir = 'weights/tracer0_best.pth'
+            net = tracer.TRACER(tracer_cfg)
+        elif model_name == 'tracer5':
+            model_dir = 'weights/tracer5_best.pth'
+            net = tracer.TRACER(tracer_cfg)
+        else:
+            raise Exception('model not implemented.')
+        net.load_state_dict(torch.load(model_dir))
+        net = net.to(device)
+        net.eval()
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     tf = None
     if model_name == 'unet' or model_name == 'u2net':
@@ -79,7 +89,7 @@ def do_extract(path, model_name='unet', morph_it=10):
                 std=[0.229, 0.224, 0.225],
             ),
         ])
-    elif model_name == 'tracer0':
+    elif model_name.startswith('tracer'):
         tf = T.Compose([
             T.ToPILImage(),
             T.Resize([tracer_cfg.img_size, tracer_cfg.img_size]),
@@ -89,19 +99,8 @@ def do_extract(path, model_name='unet', morph_it=10):
                 std=[0.229, 0.224, 0.225],
             ),
         ])
-        # tf = albu.Compose([
-        #     albu.Resize(tracer_cfg.img_size, tracer_cfg.img_size, always_apply=True),
-        #     albu.Normalize([0.485, 0.456, 0.406],
-        #                    [0.229, 0.224, 0.225]),
-        #     ToTensorV2(),
-        # ])
-
     img_tf = tf(img_rgb)
     img_tf = img_tf.unsqueeze(0)
-    net.load_state_dict(torch.load(model_dir))
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    net = net.to(device)
-    net.eval()
     inputs_test = torch.tensor(img_tf, device=device, dtype=torch.float32)
 
     # if torch.cuda.is_available():
@@ -115,7 +114,7 @@ def do_extract(path, model_name='unet', morph_it=10):
             pred_tf, _, _, _, _, _, _ = net(inputs_test)
         elif model_name == 'unet':
             pred_tf = net(inputs_test)
-        elif model_name == 'tracer0':
+        elif model_name.startswith('tracer'):
             pred_tf, _, _ = net(inputs_test)
 
     pred_np = pred_tf.cpu().detach().numpy()
@@ -220,7 +219,7 @@ if __name__ == '__main__':
         annotations[images[x['image_id']]['file_name']] = x
 
     morph_it = 10
-    model_name = 'tracer0'
+    model_name = 'tracer5'
     extract_root = 'extracted_masks_{}_morph{}'.format(model_name, morph_it)
     output_dir = '{}/masks'.format(extract_root)
     compare_dir = '{}/masked_images'.format(extract_root)
@@ -251,4 +250,5 @@ if __name__ == '__main__':
     ## version 2
     # net = cv2.dnn.readNetFromCaffe(args.prototxt, args.caffemodel)
     # cv2.dnn_registerLayer("Crop", CropLayer)
+    net = None
     extract(paths, model_name=model_name)

@@ -9,7 +9,7 @@ def getConfig():
     parser.add_argument('--data_path', type=str, default='data/')
 
     # Model parameter settings
-    parser.add_argument('--arch', type=str, default='0', help='Backbone Architecture')
+    parser.add_argument('--arch', type=str, default='5', help='Backbone Architecture')
     parser.add_argument('--channels', type=list, default=[24, 40, 112, 320])
     parser.add_argument('--RFB_aggregated_channel', type=int, nargs='*', default=[32, 64, 128])
     parser.add_argument('--frequency_radius', type=int, default=16, help='Frequency radius r in FFT')
@@ -17,7 +17,7 @@ def getConfig():
     parser.add_argument('--gamma', type=float, default=0.1, help='Confidence ratio')
 
     # Training parameter settings
-    parser.add_argument('--img_size', type=int, default=320)
+    parser.add_argument('--img_size', type=int, default=512)
     parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--lr', type=float, default=5e-5)
