@@ -13,10 +13,10 @@ import torch
 import torchvision.transforms as T
 from torch.autograd import Variable
 
-import tracer.config
 from config import Config
 
 from u2net_model import U2NET, U2NETP
+import tracer
 from tracer.TRACER import TRACER
 from unet import Unet
 import albumentations as albu
@@ -31,7 +31,7 @@ def normPRED_np(d):
     return dn
 
 
-def do_extract(path):
+def do_extract(path, model_name='unet', morph_it=10):
     annotation = annotations[os.path.basename(path)]
     bbox = annotation['bbox']
     x, y, w, h = [int(x) for x in bbox]
@@ -54,7 +54,7 @@ def do_extract(path):
     # -------------------------
     # start extracting object mask, using SOD model
     # -------------------------
-    model_name = 'unet'
+    tracer_cfg = None
     if model_name == 'u2net':
         model_dir = 'weights/u2net_best.pth'
         net = U2NET(in_ch=3, out_ch=1)
@@ -89,7 +89,7 @@ def do_extract(path):
                 std=[0.229, 0.224, 0.225],
             ),
         ])
-        # albu.Compose([
+        # tf = albu.Compose([
         #     albu.Resize(tracer_cfg.img_size, tracer_cfg.img_size, always_apply=True),
         #     albu.Normalize([0.485, 0.456, 0.406],
         #                    [0.229, 0.224, 0.225]),
@@ -98,22 +98,25 @@ def do_extract(path):
 
     img_tf = tf(img_rgb)
     img_tf = img_tf.unsqueeze(0)
-    if torch.cuda.is_available():
-        net.load_state_dict(torch.load(model_dir))
-        net.cuda()
-    else:
-        net.load_state_dict(torch.load(model_dir, map_location='cpu'))
+    net.load_state_dict(torch.load(model_dir))
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    net = net.to(device)
+    net.eval()
+    inputs_test = torch.tensor(img_tf, device=device, dtype=torch.float32)
 
-    if torch.cuda.is_available():
-        inputs_test = Variable(img_tf.cuda())
-    else:
-        inputs_test = Variable(img_tf)
+    # if torch.cuda.is_available():
+    #     inputs_test = Variable(img_tf.cuda())
+    # else:
+    #     inputs_test = Variable(img_tf)
 
     pred_tf = None
-    if model_name == 'u2net':
-        pred_tf, _, _, _, _, _, _ = net(inputs_test)
-    elif model_name == 'unet':
-        pred_tf = net(inputs_test)
+    with torch.no_grad():
+        if model_name == 'u2net':
+            pred_tf, _, _, _, _, _, _ = net(inputs_test)
+        elif model_name == 'unet':
+            pred_tf = net(inputs_test)
+        elif model_name == 'tracer0':
+            pred_tf, _, _ = net(inputs_test)
 
     pred_np = pred_tf.cpu().detach().numpy()
     pred = pred_np[:, 0, :, :]
@@ -124,14 +127,15 @@ def do_extract(path):
     ret, thresh = cv2.threshold(pred, 125, 255, cv2.THRESH_BINARY)
     thresh = np.array(thresh, np.uint8)
     ## perform morphological operation
-    rect_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 30))
-    threshed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, rect_kernel)
-    thresh_stack = np.stack((thresh,) * 3, axis=-1)
-    # 利用contour將多個區塊連起來
-    Contours, Hierarchy = cv2.findContours(threshed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    for cnt in Contours:
-        hull = cv2.convexHull(cnt)
-        cv2.drawContours(thresh_stack, [hull], -1, color=(255, 255, 255), thickness=cv2.FILLED)
+    # rect_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 30))
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    threshed = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=morph_it)
+    thresh_stack = np.stack((threshed,) * 3, axis=-1)
+    ### 利用contour將多個區塊連起來
+    # Contours, Hierarchy = cv2.findContours(threshed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    # for cnt in Contours:
+    #     hull = cv2.convexHull(cnt)
+    #     cv2.drawContours(thresh_stack, [hull], -1, color=(255, 255, 255), thickness=cv2.FILLED)
     thresh_stack = cv2.resize(thresh_stack, (crop_x2 - crop_x1, crop_y2 - crop_y1), interpolation=cv2.INTER_AREA)
     filled = cv2.cvtColor(thresh_stack, cv2.COLOR_BGR2GRAY)
     filled = filled / 255
@@ -159,9 +163,9 @@ def do_extract(path):
     #             np.array(filled * 255, dtype=np.uint8))
 
 
-def extract(paths):
+def extract(paths, model_name='unet', morph_it=10):
     for path in tqdm(paths):
-        do_extract(path)
+        do_extract(path, model_name=model_name, morph_it=morph_it)
 
 
 class CropLayer(object):
@@ -215,7 +219,9 @@ if __name__ == '__main__':
     for x in data['annotations']:
         annotations[images[x['image_id']]['file_name']] = x
 
-    extract_root = 'extracted_masks_contour'
+    morph_it = 10
+    model_name = 'tracer0'
+    extract_root = 'extracted_masks_{}_morph{}'.format(model_name, morph_it)
     output_dir = '{}/masks'.format(extract_root)
     compare_dir = '{}/masked_images'.format(extract_root)
     crop_dir = '{}/crop_images'.format(extract_root)
@@ -245,4 +251,4 @@ if __name__ == '__main__':
     ## version 2
     # net = cv2.dnn.readNetFromCaffe(args.prototxt, args.caffemodel)
     # cv2.dnn_registerLayer("Crop", CropLayer)
-    extract(paths)
+    extract(paths, model_name=model_name)

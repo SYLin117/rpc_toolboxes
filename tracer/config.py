@@ -4,7 +4,7 @@ import argparse
 def getConfig():
     parser = argparse.ArgumentParser()
     parser.add_argument('--action', type=str, default='train', help='Model Training or Testing options')
-    parser.add_argument('--exp_num', default=1, type=str, help='experiment_number')
+    parser.add_argument('--exp_num', default=0, type=str, help='experiment_number')
     parser.add_argument('--dataset', type=str, default='RPC', help='DUTS')
     parser.add_argument('--data_path', type=str, default='data/')
 
@@ -18,7 +18,7 @@ def getConfig():
 
     # Training parameter settings
     parser.add_argument('--img_size', type=int, default=320)
-    parser.add_argument('--batch_size', type=int, default=8)
+    parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--lr', type=float, default=5e-5)
     parser.add_argument('--optimizer', type=str, default='Adam')
