@@ -3,7 +3,7 @@ import argparse
 
 def getConfig():
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', type=str, default='train', help='Model Training or Testing options')
+    parser.add_argument('--action', type=str, default='train', help='Model Training or Testing options')
     parser.add_argument('--exp_num', default=1, type=str, help='experiment_number')
     parser.add_argument('--dataset', type=str, default='RPC', help='DUTS')
     parser.add_argument('--data_path', type=str, default='data/')

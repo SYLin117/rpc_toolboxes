@@ -11,7 +11,7 @@ Reimplemented: Min Seok Lee and Wooseok Shin
 import torch
 from torch import nn
 from torch.nn import functional as F
-from util.effi_utils import (
+from .util.effi_utils import (
     get_model_shape,
     round_filters,
     round_repeats,
@@ -24,8 +24,8 @@ from util.effi_utils import (
     MemoryEfficientSwish,
     calculate_output_image_size
 )
-from modules.att_modules import Frequency_Edge_Module
-from config import getConfig
+from .modules.att_modules import Frequency_Edge_Module
+from .config import getConfig
 
 cfg = getConfig()
 

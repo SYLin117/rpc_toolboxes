@@ -13,10 +13,14 @@ import torch
 import torchvision.transforms as T
 from torch.autograd import Variable
 
+import tracer.config
 from config import Config
 
 from u2net_model import U2NET, U2NETP
+from tracer.TRACER import TRACER
 from unet import Unet
+import albumentations as albu
+from albumentations.pytorch.transforms import ToTensorV2
 
 
 def normPRED_np(d):
@@ -47,43 +51,6 @@ def do_extract(path):
     img = img[crop_y1:crop_y2, crop_x1:crop_x2]
     origin_img = np.copy(img)
 
-    # # --------------------------
-    # # start extracting object mask(original steps)
-    # # --------------------------
-    # img = cv2.bilateralFilter(img, 3, 75, 75)
-    #
-    # # -------------------------
-    # # edge detect
-    # # -------------------------
-    # ## version 1
-    # edges = detector.detectEdges(np.float32(img) / 255)
-    # ## version 2
-    # # blob = cv2.dnn.blobFromImage(img, scalefactor=1.0, size=(img.shape[1], img.shape[0]),
-    # #                              mean=(104.00698793, 116.66876762, 122.67891434),
-    # #                              swapRB=False, crop=False)
-    # # net.setInput(blob)
-    # # hed = net.forward()
-    # # edges = cv2.resize(hed[0, 0], (img.shape[1], img.shape[0]))
-    # # -------------------------
-    # # edge process
-    # # -------------------------
-    # object_box_mask = np.zeros_like(edges, dtype=np.uint8)
-    # object_box_mask[y:y + h, x:x + w] = 1
-    # edges[(1 - object_box_mask) == 1] = 0
-    # edges[(edges < (edges.mean() * 0.5)) & (edges < 0.1)] = 0
-    #
-    # # -------------------------
-    # # erode and dilate
-    # # -------------------------
-    # filled = ndimage.binary_fill_holes(edges).astype(np.uint8)
-    # filled = cv2.erode(filled, np.ones((32, 32), np.uint8))
-    # filled = cv2.dilate(filled, np.ones((32, 32), np.uint8))
-    # filled = cv2.erode(filled, np.ones((8, 8), np.uint8))
-    # filled = cv2.medianBlur(filled, 17)  # fill is annotation's bbox area
-    # # -------------------------
-    # # end of mask extraction(original steps)
-    # # -------------------------
-
     # -------------------------
     # start extracting object mask, using SOD model
     # -------------------------
@@ -94,18 +61,41 @@ def do_extract(path):
     elif model_name == 'unet':
         model_dir = 'weights/unet.pth'
         net = Unet(n_channels=3, n_classes=1)
+    elif model_name == 'tracer0':
+        tracer_cfg = tracer.config.getConfig()
+        model_dir = 'weights/tracer0_best.pth'
+        net = tracer.TRACER(tracer_cfg)
     else:
         raise Exception('model not implemented.')
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    tf = T.Compose([
-        T.ToPILImage(),
-        T.Resize([512, 512]),
-        T.ToTensor(),
-        T.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225],
-        ),
-    ])
+    tf = None
+    if model_name == 'unet' or model_name == 'u2net':
+        tf = T.Compose([
+            T.ToPILImage(),
+            T.Resize([512, 512]),
+            T.ToTensor(),
+            T.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225],
+            ),
+        ])
+    elif model_name == 'tracer0':
+        tf = T.Compose([
+            T.ToPILImage(),
+            T.Resize([tracer_cfg.img_size, tracer_cfg.img_size]),
+            T.ToTensor(),
+            T.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225],
+            ),
+        ])
+        # albu.Compose([
+        #     albu.Resize(tracer_cfg.img_size, tracer_cfg.img_size, always_apply=True),
+        #     albu.Normalize([0.485, 0.456, 0.406],
+        #                    [0.229, 0.224, 0.225]),
+        #     ToTensorV2(),
+        # ])
+
     img_tf = tf(img_rgb)
     img_tf = img_tf.unsqueeze(0)
     if torch.cuda.is_available():
@@ -137,11 +127,11 @@ def do_extract(path):
     rect_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 30))
     threshed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, rect_kernel)
     thresh_stack = np.stack((thresh,) * 3, axis=-1)
-    ## 利用contour將多個區塊連起來
-    # Contours, Hierarchy = cv2.findContours(threshed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    # for cnt in Contours:
-    #     hull = cv2.convexHull(cnt)
-    #     cv2.drawContours(thresh_stack, [hull], -1, color=(255, 255, 255), thickness=cv2.FILLED)
+    # 利用contour將多個區塊連起來
+    Contours, Hierarchy = cv2.findContours(threshed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    for cnt in Contours:
+        hull = cv2.convexHull(cnt)
+        cv2.drawContours(thresh_stack, [hull], -1, color=(255, 255, 255), thickness=cv2.FILLED)
     thresh_stack = cv2.resize(thresh_stack, (crop_x2 - crop_x1, crop_y2 - crop_y1), interpolation=cv2.INTER_AREA)
     filled = cv2.cvtColor(thresh_stack, cv2.COLOR_BGR2GRAY)
     filled = filled / 255
@@ -225,7 +215,7 @@ if __name__ == '__main__':
     for x in data['annotations']:
         annotations[images[x['image_id']]['file_name']] = x
 
-    extract_root = 'extracted_masks'
+    extract_root = 'extracted_masks_contour'
     output_dir = '{}/masks'.format(extract_root)
     compare_dir = '{}/masked_images'.format(extract_root)
     crop_dir = '{}/crop_images'.format(extract_root)

@@ -8,7 +8,7 @@ from torch.fft import fft2, fftshift, ifft2, ifftshift
 from tracer.util.utils import *
 import torch.nn.functional as F
 from tracer.config import getConfig
-from conv_modules import BasicConv2d, DWConv, DWSConv
+from .conv_modules import BasicConv2d, DWConv, DWSConv
 
 cfg = getConfig()
 
