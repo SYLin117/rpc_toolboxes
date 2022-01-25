@@ -19,10 +19,10 @@ class Config:
         self.rotate_angles = ['1', '12', '21', '32']
         # self.img_filters = ['*camera0-10*.jpg', '*camera0-30*.jpg', '*camera1-10*.jpg', ]
         self.img_filters = list()
-        # for ca in self.camera_angles:
-        #     for ra in self.rotate_angles:
-        #         self.img_filters.append('*camera{}-{}*.jpg'.format(ca, ra))
-        self.img_filters.append('*camera1-10*.jpg')
+        for ca in self.camera_angles:
+            for ra in self.rotate_angles:
+                self.img_filters.append('*camera{}-{}*.jpg'.format(ca, ra))
+        # self.img_filters.append('*.jpg')
 
     def get_dataset_root(self):
         return self.datasets_root

@@ -9,11 +9,13 @@ from argparse import ArgumentParser
 from collections import defaultdict
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 from scipy import ndimage
 from tqdm import tqdm
 from config import Config
 import pathlib
+import sys
+import matplotlib.pyplot as plt
 
 NUM_CATEGORIES = 200
 GENERATED_NUM = 100
@@ -67,7 +69,8 @@ CATEGORIES = ['__background__', '1_puffed_food', '2_puffed_food', '3_puffed_food
               '198_stationery', '199_stationery', '200_stationery']
 
 np.random.seed(42)
-CAT_COLORS = (np.random.rand(200, 3) * 255).astype(np.uint8)
+CAT_COLORS = (np.random.rand(201, 3) * 255).astype(np.uint8)
+CAT_COLORS[0, :] = [0, 0, 0]
 
 
 def buy_strategic(counter):
@@ -198,7 +201,7 @@ def gaussian_filter_density(gt):
 
 def synthesize(strategics, save_json_file='', output_dir='', save_mask=False, train_json=None, train_imgs_dir=None,
                train_imgs_mask_dir=None, file_filter=None):
-    with open('ratio_annotations2.json') as fid:
+    with open('ratio_annotations.json') as fid:
         ratio_annotations = json.load(fid)
 
     with open(train_json) as fid:
@@ -238,8 +241,8 @@ def synthesize(strategics, save_json_file='', output_dir='', save_mask=False, tr
     for image_id, num_per_category in tqdm(strategics):
         img_id_num = image_id.split('_')[2]
         bg_img = Image.fromarray(bg_img_cv)
-        mask_img = Image.fromarray(mask_img_cv)
-        synthesize_annotations = []
+        mask_img = Image.fromarray(mask_img_cv).convert('RGB')
+        obj_in_this_pic = list()
         for category, count in num_per_category.items():
             category = int(category)
             for _ in range(count):
@@ -265,7 +268,7 @@ def synthesize(strategics, save_json_file='', output_dir='', save_mask=False, tr
                 # ---------------------------
                 # Random scale
                 # ---------------------------
-                scale = random.uniform(0.4, 0.7)
+                scale = random.uniform(0.5, 0.7)
                 w, h = int(w * scale), int(h * scale)
                 obj = obj.resize((w, h), resample=Image.BILINEAR)
                 mask = mask.resize((w, h), resample=Image.BILINEAR)
@@ -296,9 +299,9 @@ def synthesize(strategics, save_json_file='', output_dir='', save_mask=False, tr
                 pad = 2
                 pos_x, pos_y = generated_position(bg_width, bg_height, w, h, pad)
                 start = time.time()
-                threshold = 0.1
-                while not check_iou(synthesize_annotations, box=(pos_x, pos_y, w, h), threshold=threshold):
-                    if (time.time() - start) > 10:  # cannot find a valid position in 3 seconds
+                threshold = 0.25
+                while not check_iou(obj_in_this_pic, box=(pos_x, pos_y, w, h), threshold=threshold):
+                    if (time.time() - start) > 3:  # cannot find a valid position in 3 seconds
                         start = time.time()
                         threshold += 0.05
                         continue
@@ -306,7 +309,26 @@ def synthesize(strategics, save_json_file='', output_dir='', save_mask=False, tr
 
                 bg_img.paste(obj, box=(pos_x, pos_y), mask=mask)
                 if save_mask:
-                    mask_img.paste(mask, box=(pos_x, pos_y), mask=mask)
+                    color_mask = Image.new('RGB', mask.size, tuple(CAT_COLORS[category])) # 挑到mask畫面上的物件mask
+                    color_mask_cv2 = np.asarray(color_mask)
+                    mask_cv2 = np.asarray(mask)
+                    kernel = np.ones((3, 3), np.uint8)
+                    erosion = cv2.erode(mask_cv2, kernel, iterations=3)
+                    # _, mask_cv2 = cv2.threshold(mask_cv2, 127, 255, cv2.THRESH_BINARY_INV)
+                    Contours, _ = cv2.findContours(erosion, cv2.RETR_EXTERNAL,
+                                                   cv2.CHAIN_APPROX_TC89_KCOS)
+                    # mask_cv2_rgb = cv2.cvtColor(mask_cv2, cv2.COLOR_GRAY2RGB, )
+                    for cnt in Contours:
+                        hull = cv2.convexHull(cnt)
+                        cv2.drawContours(color_mask_cv2, [hull], -1, color=(0, 0, 0), thickness=4, )
+
+                    plt.imshow(color_mask_cv2)
+                    plt.show()
+                    plt.close()
+                    color_mask = Image.fromarray(color_mask_cv2)
+                    mask_img.paste(color_mask, box=(pos_x, pos_y), mask=mask)
+                # plt.imshow(mask)
+                # plt.show()
 
                 # ---------------------------
                 # Find center of mass
@@ -325,18 +347,27 @@ def synthesize(strategics, save_json_file='', output_dir='', save_mask=False, tr
                     'iscrowd': 0,
                     'id': ann_idx
                 })
+                obj_in_this_pic.append({
+                    'bbox': (pos_x, pos_y, w, h),
+                    'category_id': category,
+                    'center_of_mass': center_of_mass,
+                    'area': area,
+                    'image_id': int(img_id_num),
+                    'iscrowd': 0,
+                    'id': ann_idx
+                })
                 ann_idx += 1
 
         assert bg_height == 1815 and bg_width == 1815
         scale = 200.0 / 1815
         gt = np.zeros((round(bg_height * scale), round(bg_width * scale)))
-        for item in synthesize_annotations:
+        for item in obj_in_this_pic:
             center_of_mass = item['center_of_mass']
             gt[round(center_of_mass[1] * scale), round(center_of_mass[0] * scale)] = 1
 
         assert gt.shape[0] == 200 and gt.shape[1] == 200
 
-        # density = gaussian_filter_density(gt) # gussian to gt
+        # density = gaussian_filter_density(gt)  # gussian to gt
         image_name = '{}.jpg'.format(image_id)
 
         bg_img.save(os.path.join(output_dir, image_name))
@@ -421,17 +452,21 @@ if __name__ == '__main__':
     if not os.path.exists(os.path.join(output_dir, 'density_maps')):
         os.mkdir(os.path.join(output_dir, 'density_maps'))
 
+    if not os.path.exists(os.path.join(output_dir, 'masks')):
+        os.mkdir(os.path.join(output_dir, 'masks'))
+
     threads = []
     num_threads = args.count
     sub_strategics = strategics[args.local_rank::num_threads]
     config = Config()
     DATASET_ROOT = config.get_dataset_root()
     CURRENT_ROOT = str(pathlib.Path().resolve())
-    save_file = os.path.join(CURRENT_ROOT, 'retail_product_checkout',
-                             'sod_synthesize_{}_{}.json'.format(version, args.local_rank))
-    rpc_train_json = os.path.join(DATASET_ROOT, 'retail_product_checkout', 'instances_train2019.json') # rpc的train.json
-    rpc_train = os.path.join(DATASET_ROOT, 'retail_product_checkout', 'train2019')
-    rpc_train_mask = os.path.join(CURRENT_ROOT, 'extracted_masks', 'masks')
+    save_file = os.path.join(sys.path[0],
+                             'sod_synthesize_{}_{}.json'.format(version, args.local_rank))  # synthesis images json檔案
+    rpc_train_json = os.path.join(DATASET_ROOT, 'retail_product_checkout',
+                                  'instances_train2019.json')  # rpc的原始train.json
+    rpc_train = os.path.join(DATASET_ROOT, 'retail_product_checkout', 'train2019')  # rpc 的train影像資料夾
+    rpc_train_mask = os.path.join(CURRENT_ROOT, 'extracted_masks_tracer5_morph10', 'masks')  # 擷取的mask影像資料夾
     synthesize(sub_strategics, save_file, output_dir,
                train_json=rpc_train_json,
                train_imgs_dir=rpc_train,
