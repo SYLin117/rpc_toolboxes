@@ -22,7 +22,7 @@ class Config:
         for ca in self.camera_angles:
             for ra in self.rotate_angles:
                 self.img_filters.append('*camera{}-{}*.jpg'.format(ca, ra))
-        # self.img_filters.append('*.jpg')
+
 
     def get_dataset_root(self):
         return self.datasets_root

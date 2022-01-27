@@ -18,7 +18,7 @@ import sys
 import matplotlib.pyplot as plt
 
 NUM_CATEGORIES = 200
-GENERATED_NUM = 100
+GENERATED_NUM = 20000
 
 CATEGORIES = ['__background__', '1_puffed_food', '2_puffed_food', '3_puffed_food', '4_puffed_food', '5_puffed_food',
               '6_puffed_food', '7_puffed_food',
@@ -134,19 +134,28 @@ def check_iou(annotations, box, threshold=0.5):
     return True
 
 
-def sample_select_object_index(category, paths, ratio_annotations, threshold=0.1):
+def sample_select_object_index(category, paths, ratio_annotations, threshold=0.5):
     """
     randomly choose one file that match threshold
     Args:
-        category:
-        paths:
+        paths: 該物件的影像(list)
         ratio_annotations:
-        threshold:
+        threshold: 滿足的threshold
 
     Returns:
 
     """
+    high_threshold_paths = list()
+    # if category in [160, 161, 162, 163]:  # 瓶狀的調味品
+    #     ratio_list = [ratio_annotations[os.path.basename(path)] for path in paths]
+    #     high_threshold_paths.append(paths[ratio_list.index(max(ratio_list))])
+    # else:
+    #     high_threshold_paths = [path for path in paths if ratio_annotations[os.path.basename(path)] > threshold]
     high_threshold_paths = [path for path in paths if ratio_annotations[os.path.basename(path)] > threshold]
+    if len(high_threshold_paths) == 0:  # 如果沒有>threshold的圖片 則取最大的
+        ratio_list = [ratio_annotations[os.path.basename(path)] for path in paths]
+        high_threshold_paths.append(paths[ratio_list.index(max(ratio_list))])
+    # high_threshold_paths = paths
     index = random.randint(0, len(high_threshold_paths) - 1)
     path = high_threshold_paths[index]
     return path
@@ -214,15 +223,27 @@ def synthesize(strategics, save_json_file='', output_dir='', save_mask=False, tr
     for x in data['annotations']:
         annotations[images[x['image_id']]['file_name']] = x
 
-    # object_paths = glob.glob(
-    #     os.path.join('/media/ian/WD/PythonProject/DP-Net/acm-mm-2019-ACO-master/toolboxes/extracted_masks/crop_images/',
-    #                  '*.jpg'))
+    # ---------------------------
+    # get image list
+    # ---------------------------
     object_paths = list()
-    if not file_filter:
-        object_paths = glob.glob(os.path.join(train_imgs_dir, '*.jpg'))
-    else:
-        for filter in file_filter:
-            object_paths += glob.glob(os.path.join(train_imgs_dir, filter))
+    # object_paths += glob.glob(os.path.join(train_imgs_dir, '*.jpg'))
+    with open('cat_2_angle.json') as fid:
+        cat_2_angle = json.load(fid)
+    with open('product_code.json') as fid:
+        product_code = json.load(fid)
+    rotate_angles = ['1', '12', '21', '32']
+    for code, value in product_code.items():
+        angles = cat_2_angle[value['sku_class']]
+        if value['cat_id'] in [160, 161, 162, 163]:  # 瓶裝的調味料(seasoner)(其他是包裝的)
+            angles = [3]
+        if value['cat_id'] in [37, 39, 40, 41]:  # 包裝類的即溶飲料(instant-drink)(其他是罐裝的)
+            angles = [1]
+        for ca in angles:
+            for ra in rotate_angles:
+                object_paths += glob.glob(os.path.join(train_imgs_dir, '{}_camera{}-{}.jpg'.format(code, ca, ra)))
+                object_paths += glob.glob(
+                    os.path.join(train_imgs_dir, '{}-back_camera{}-{}.jpg'.format(code, ca, ra)))  # 有背面的商品
 
     object_category_paths = defaultdict(list)
     for path in object_paths:
@@ -235,6 +256,8 @@ def synthesize(strategics, save_json_file='', output_dir='', save_mask=False, tr
     bg_height, bg_width = bg_img_cv.shape[:2]
     mask_img_cv = np.zeros((bg_height, bg_width), dtype=np.uint8)
 
+    with open('item_size.json') as fid:
+        item_size = json.load(fid)
     json_ann = []
     json_img = []
     ann_idx = 0
@@ -268,7 +291,14 @@ def synthesize(strategics, save_json_file='', output_dir='', save_mask=False, tr
                 # ---------------------------
                 # Random scale
                 # ---------------------------
-                scale = random.uniform(0.5, 0.7)
+                scale = 1
+                if item_size[str(category)] == 'large':
+                    scale = random.uniform(0.5, 0.6)
+                elif item_size[str(category)] == 'medium':
+                    scale = random.uniform(0.7, 0.8)
+                elif item_size[str(category)] == 'small':
+                    scale = 1
+
                 w, h = int(w * scale), int(h * scale)
                 obj = obj.resize((w, h), resample=Image.BILINEAR)
                 mask = mask.resize((w, h), resample=Image.BILINEAR)
@@ -277,8 +307,8 @@ def synthesize(strategics, save_json_file='', output_dir='', save_mask=False, tr
                 # Random rotate
                 # ---------------------------
                 angle = random.random() * 360
-                obj = obj.rotate(angle, resample=Image.BILINEAR, expand=1)
-                mask = mask.rotate(angle, resample=Image.BILINEAR, expand=1)
+                obj = obj.rotate(angle, resample=Image.BILINEAR, expand=True)
+                mask = mask.rotate(angle, resample=Image.BILINEAR, expand=True)
 
                 # ---------------------------
                 # Crop according to mask
@@ -301,7 +331,7 @@ def synthesize(strategics, save_json_file='', output_dir='', save_mask=False, tr
                 start = time.time()
                 threshold = 0.25
                 while not check_iou(obj_in_this_pic, box=(pos_x, pos_y, w, h), threshold=threshold):
-                    if (time.time() - start) > 3:  # cannot find a valid position in 3 seconds
+                    if (time.time() - start) > 2:  # cannot find a valid position in 3 seconds
                         start = time.time()
                         threshold += 0.05
                         continue
@@ -309,7 +339,7 @@ def synthesize(strategics, save_json_file='', output_dir='', save_mask=False, tr
 
                 bg_img.paste(obj, box=(pos_x, pos_y), mask=mask)
                 if save_mask:
-                    color_mask = Image.new('RGB', mask.size, tuple(CAT_COLORS[category])) # 挑到mask畫面上的物件mask
+                    color_mask = Image.new('RGB', mask.size, tuple(CAT_COLORS[category]))  # 挑到mask畫面上的物件mask
                     color_mask_cv2 = np.asarray(color_mask)
                     mask_cv2 = np.asarray(mask)
                     kernel = np.ones((3, 3), np.uint8)
@@ -322,9 +352,9 @@ def synthesize(strategics, save_json_file='', output_dir='', save_mask=False, tr
                         hull = cv2.convexHull(cnt)
                         cv2.drawContours(color_mask_cv2, [hull], -1, color=(0, 0, 0), thickness=4, )
 
-                    plt.imshow(color_mask_cv2)
-                    plt.show()
-                    plt.close()
+                    # plt.imshow(color_mask_cv2)
+                    # plt.show()
+                    # plt.close()
                     color_mask = Image.fromarray(color_mask_cv2)
                     mask_img.paste(color_mask, box=(pos_x, pos_y), mask=mask)
                 # plt.imshow(mask)
@@ -373,23 +403,8 @@ def synthesize(strategics, save_json_file='', output_dir='', save_mask=False, tr
         bg_img.save(os.path.join(output_dir, image_name))
         # np.save(os.path.join(output_dir, 'density_maps', image_id), density) # save density
 
-        # plt.subplot(121)
-        # plt.imshow(density, cmap='gray')
-        #
-        # plt.subplot(122)
-        # plt.imshow(bg_img)
-        #
-        # print(len(synthesize_annotations))
-        # print(density.sum())
-        # plt.show()
-        # quit()
-
         if save_mask:
             mask_img.save(os.path.join(output_dir, 'masks', image_name))
-        # json_ann.append({
-        #     'image_id': image_name,
-        #     'objects': synthesize_annotations
-        # })
 
         json_img.append({
             'file_name': image_name,
