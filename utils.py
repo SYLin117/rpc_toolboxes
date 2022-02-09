@@ -6,6 +6,10 @@ from config import Config
 from collections import defaultdict, OrderedDict
 import shutil
 from operator import itemgetter
+from pathlib import Path
+import cv2
+from tqdm import tqdm
+import numpy as np
 
 cfg = Config()
 
@@ -45,6 +49,10 @@ def find_items():
 
 
 def get_sizeof_product():
+    """
+    依照ratio的比例 給物件分為三種大小large, medium and small
+    :return:
+    """
     with open(
             os.path.join(cfg.get_dataset_root(), 'retail_product_checkout', 'instances_train2019.json')) as fid:
         data = json.load(fid)
@@ -107,6 +115,61 @@ def get_sizeof_product():
         json.dump(size_dict, outfile)
 
 
+def extract_val_obj():
+    save_path = os.path.join(cfg.get_dataset_root(), 'retail_product_checkout', 'val_instance')
+    Path.mkdir(Path(save_path).resolve(), parents=True, exist_ok=True)
+
+    with open(os.path.join(cfg.get_dataset_root(), 'retail_product_checkout', 'instances_val2019.json'),
+              'rb') as json_file:
+        json_data = json.load(json_file)
+    imgs = json_data['images']
+    anns = json_data['annotations']
+    anns = sorted(anns, key=lambda i: (i['image_id'], i['id']))
+    # json中的img_id對應的檔案名稱
+    image_id_2_filename = {img['id']: img['file_name'] for img in imgs}
+    current_image_id = None
+    img_cv = None
+    ann_idx = 1
+    for ann in tqdm(anns):
+        if current_image_id is None:
+            img_cv = cv2.imread(os.path.join(cfg.get_dataset_root(), 'retail_product_checkout', 'val2019',
+                                             image_id_2_filename[ann['image_id']]))
+        elif current_image_id != ann['image_id']:
+            img_cv = cv2.imread(os.path.join(cfg.get_dataset_root(), 'retail_product_checkout', 'val2019',
+                                             image_id_2_filename[ann['image_id']]))
+        current_image_id = ann['image_id']
+        bbox = ann['bbox']
+        x0 = int(bbox[0])
+        y0 = int(bbox[1])
+        x1 = x0 + int(bbox[2])
+        y1 = y0 + int(bbox[3])
+        crop_img = img_cv[y0:y1, x0:x1, :]
+        cv2.imwrite(os.path.join(cfg.get_dataset_root(), 'retail_product_checkout', 'val_instance',
+                                 '{}-{}-{}.jpg'.format(image_id_2_filename[ann['image_id']], ann['category_id'],
+                                                       ann_idx)), crop_img)
+        ann_idx += 1
+
+
+def check_each_class_instance_count():
+    with open(os.path.join(cfg.get_dataset_root(), 'rpc_list', 'sod_synthesize_10000_0.json')) as fid:
+        data = json.load(fid)
+    from collections import defaultdict
+    a = {}
+    a = defaultdict(lambda: 0, a)
+    anns = data['annotations']
+    for ann in anns:
+        a[ann['category_id']] += 1
+    a = OrderedDict(sorted(a.items()))
+    chk_idx = 1
+    for k, _ in a.items():
+        assert int(k) == chk_idx, "dont have category {} in dataset".format(chk_idx)
+        chk_idx += 1
+    print(a)
+
+
 if __name__ == "__main__":
+    print()
     # find_items()
-    get_sizeof_product()
+    # get_sizeof_product()
+    # extract_val_obj()
+    check_each_class_instance_count()

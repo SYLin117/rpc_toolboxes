@@ -16,10 +16,14 @@ from config import Config
 import pathlib
 import sys
 import matplotlib.pyplot as plt
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+
+"""
+使用multithread製作偽造影像
+"""
 
 NUM_CATEGORIES = 200
-GENERATED_NUM = 100
+GENERATED_NUM = 10000
 
 CATEGORIES = ['__background__', '1_puffed_food', '2_puffed_food', '3_puffed_food', '4_puffed_food', '5_puffed_food',
               '6_puffed_food', '7_puffed_food',
@@ -244,7 +248,7 @@ def create_image(image_id, num_per_category, bg_img_cv, mask_img_cv):
             if item_size[str(category)] == 'large':
                 scale = random.uniform(0.5, 0.6)
             elif item_size[str(category)] == 'medium':
-                scale = random.uniform(0.7, 0.8)
+                scale = random.uniform(0.6, 0.8)
             elif item_size[str(category)] == 'small':
                 scale = 1
 
@@ -280,7 +284,7 @@ def create_image(image_id, num_per_category, bg_img_cv, mask_img_cv):
             start = time.time()
             threshold = 0.25
             while not check_iou(obj_in_this_pic, box=(pos_x, pos_y, w, h), threshold=threshold):
-                if (time.time() - start) > 2:  # cannot find a valid position in 3 seconds
+                if (time.time() - start) > 10:  # cannot find a valid position in 3 seconds
                     start = time.time()
                     threshold += 0.05
                     continue
@@ -293,17 +297,21 @@ def create_image(image_id, num_per_category, bg_img_cv, mask_img_cv):
                 mask_cv2 = np.asarray(mask)
                 kernel = np.ones((3, 3), np.uint8)
                 erosion = cv2.erode(mask_cv2, kernel, iterations=3)
+                diff = cv2.absdiff(mask_cv2, erosion) / 255  # use as mask for black border paint on color mask
+                diff = np.stack((diff, diff, diff), axis=2)  # make it to 3-channel
+                blank_image = np.zeros((mask.size[1], mask.size[0], 3), np.uint8)
+                # 為了讓相同的物件重疊的時候有黑邊可以區隔
+                color_mask_cv2[:, :, :] = color_mask_cv2[:, :, :] * (1 - diff) + blank_image * diff
                 # _, mask_cv2 = cv2.threshold(mask_cv2, 127, 255, cv2.THRESH_BINARY_INV)
-                Contours, _ = cv2.findContours(erosion, cv2.RETR_EXTERNAL,
-                                               cv2.CHAIN_APPROX_TC89_KCOS)
-                # mask_cv2_rgb = cv2.cvtColor(mask_cv2, cv2.COLOR_GRAY2RGB, )
-                for cnt in Contours:
-                    hull = cv2.convexHull(cnt)
-                    cv2.drawContours(color_mask_cv2, [hull], -1, color=(0, 0, 0), thickness=4, )
 
-                # plt.imshow(color_mask_cv2)
-                # plt.show()
-                # plt.close()
+                # ## 找出mask的邊界
+                # ## ------------
+                # Contours, _ = cv2.findContours(erosion, cv2.RETR_EXTERNAL,
+                #                                cv2.CHAIN_APPROX_TC89_KCOS)
+                # for cnt in Contours:
+                #     hull = cv2.convexHull(cnt)
+                #     cv2.drawContours(color_mask_cv2, [hull], -1, color=(0, 0, 0), thickness=4, )
+                # ## ------------
                 color_mask = Image.fromarray(color_mask_cv2)
                 mask_img.paste(color_mask, box=(pos_x, pos_y), mask=mask)
             # plt.imshow(mask)

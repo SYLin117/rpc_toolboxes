@@ -18,7 +18,7 @@ for x in data['annotations']:
     annotations[images[x['image_id']]['file_name']] = x
 
 object_paths = glob.glob(
-    os.path.join(DATASET_ROOT, 'retail_product_checkout', 'train2019', '*camera1-10*.jpg'))
+    os.path.join(DATASET_ROOT, 'retail_product_checkout', 'crop_images', '*.jpg'))
 
 object_category_paths = defaultdict(list)
 for path in object_paths:
