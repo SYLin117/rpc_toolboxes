@@ -18,7 +18,7 @@ import sys
 import matplotlib.pyplot as plt
 
 NUM_CATEGORIES = 200
-GENERATED_NUM = 20000
+GENERATED_NUM = 100
 
 CATEGORIES = ['__background__', '1_puffed_food', '2_puffed_food', '3_puffed_food', '4_puffed_food', '5_puffed_food',
               '6_puffed_food', '7_puffed_food',
@@ -430,6 +430,7 @@ def synthesize(strategics, save_json_file='', output_dir='', save_mask=False, tr
 
 
 if __name__ == '__main__':
+    start_time = time.time()
     parser = ArgumentParser(description="Synthesize fake images")
     parser.add_argument('--count', type=int, default=1)  ## original=32
     parser.add_argument('--local_rank', type=int, default=0)
@@ -437,27 +438,27 @@ if __name__ == '__main__':
 
     ###########################################################################################
     ###########################################################################################
-    counter = {
-        'easy_mode': 0,
-        'medium_mode': 0,
-        'hard_mode': 0
-    }
-    strategics = []
-    for image_id in tqdm(range(GENERATED_NUM)):
-        num_per_category = buy_strategic(counter)
-        strategics.append(('synthesized_image_{}'.format(image_id), num_per_category))
     strategics_name = 'strategics_train.json'
-    if os.path.exists(strategics_name):
-        os.remove(strategics_name)
-    with open(strategics_name, 'w') as f:
-        json.dump(strategics, f)
-    print(counter)  # {'easy_mode': 25078, 'medium_mode': 37287, 'hard_mode': 37635}
+    # counter = {
+    #     'easy_mode': 0,
+    #     'medium_mode': 0,
+    #     'hard_mode': 0
+    # }
+    # strategics = []
+    # for image_id in tqdm(range(GENERATED_NUM)):
+    #     num_per_category = buy_strategic(counter)
+    #     strategics.append(('synthesized_image_{}'.format(image_id), num_per_category))
+
+    # if os.path.exists(strategics_name):
+    #     os.remove(strategics_name)
+    # with open(strategics_name, 'w') as f:
+    #     json.dump(strategics, f)
+    # print(counter)  # {'easy_mode': 25078, 'medium_mode': 37287, 'hard_mode': 37635}
     # quit()
     ###########################################################################################
     ###########################################################################################
     with open(strategics_name) as f:
         strategics = json.load(f)
-    strategics = sorted(strategics, key=lambda s: s[0])
     version = str(GENERATED_NUM)
 
     output_dir = os.path.join('synthesize_{}'.format(version))
@@ -488,3 +489,4 @@ if __name__ == '__main__':
                train_imgs_mask_dir=rpc_train_mask,
                file_filter=config.img_filters,
                save_mask=True)
+    print("--- %s seconds ---" % (time.time() - start_time))

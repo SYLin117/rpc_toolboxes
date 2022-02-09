@@ -199,11 +199,14 @@ class CropLayer(object):
 
 
 if __name__ == '__main__':
+    config = Config()
+    DATASET_ROOT = config.get_dataset_root()
     parser = ArgumentParser(description="Extract masks")
     parser.add_argument('--ann_file', type=str,
-                        default='D:\\datasets\\retail_product_checkout\\instances_train2019.json')
+                        default=os.path.join(DATASET_ROOT, 'RPC_DATASET', 'retail_product_checkout',
+                                             'instances_train2019.json'))
     parser.add_argument('--images_dir', type=str,
-                        default='D:\\datasets\\retail_product_checkout\\train2019')
+                        default=os.path.join(DATASET_ROOT, 'RPC_DATASET', 'retail_product_checkout', 'train2019'))
     parser.add_argument('--model_file', type=str, default='model.yml.gz')
     parser.add_argument('--caffemodel', type=str, default='hed_pretrained_bsds.caffemodel')
     parser.add_argument('--prototxt', type=str, default='deploy.prototxt')
@@ -238,7 +241,7 @@ if __name__ == '__main__':
         os.makedirs(crop_mask_dir)
 
     categories = [i + 1 for i in range(200)]
-    config = Config()
+
     paths = list()
     if not config.img_filters:
         paths = glob.glob(os.path.join(args.images_dir, '*.jpg'))
