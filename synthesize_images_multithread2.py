@@ -144,7 +144,7 @@ def sample_select_object_index(category, paths, ratio_annotations, threshold=0.5
     randomly choose one file that match threshold
     Args:
         paths: 該物件的影像(list)
-        ratio_annotations:
+        ratio_annotations: 儲存所有檔案的ratio資料
         threshold: 滿足的threshold
 
     Returns:
@@ -224,7 +224,7 @@ def create_image(image_id, num_per_category, bg_img_cv, mask_img_cv):
         for _ in range(count):
             paths = object_category_paths[category]
 
-            object_path = sample_select_object_index(category, paths, ratio_annotations, threshold=0.1)
+            object_path = sample_select_object_index(category, paths, ratio_annotations, threshold=0.2)
 
             name = os.path.basename(object_path)
             mask_path = os.path.join(train_imgs_mask_dir, '{}.png'.format(name.split('.')[0]))
@@ -436,7 +436,7 @@ if __name__ == '__main__':
         cat_2_angle = json.load(fid)
     with open('product_code.json') as fid:
         product_code = json.load(fid)
-    rotate_angles = ['1', '12', '21', '32']
+    rotate_angles = [str(x) for x in range(1, 40, 2)]
     for code, value in product_code.items():
         angles = cat_2_angle[value['sku_class']]
         if value['cat_id'] in [160, 161, 162, 163]:  # 瓶裝的調味料(seasoner)(其他是包裝的)
