@@ -13,13 +13,14 @@ def calc_avg_mean_std(img_names, img_root, size):
         img = cv2.imread(os.path.join(img_root, img_name))
         img = cv2.resize(img, size)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = img / 255
         mean, std = cv2.meanStdDev(img)
         mean_sum += np.squeeze(mean)
         std_sum += np.squeeze(std)
     return (mean_sum / n_images, std_sum / n_images)
 
 
-train_img_root = './synthesize_20000'
+train_img_root = 'D:\\datasets\\retail_product_checkout\\val2019'
 train_img_names = [f for f in os.listdir(train_img_root) if re.match(r'[a-zA-Z0-9]+.*\.jpg', f)]
 train_mean, train_std = calc_avg_mean_std(train_img_names, train_img_root, (1815, 1815))
 print(train_mean)

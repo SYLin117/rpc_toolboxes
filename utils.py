@@ -167,9 +167,59 @@ def check_each_class_instance_count():
     print(a)
 
 
+def create_synthesys_shadow(source_images_folder, source_masks_folder, new_folder):
+    images = os.listdir(source_images_folder)
+    masks = os.listdir(source_masks_folder)
+    images.sort()
+    masks.sort()
+
+    for i, filename in enumerate(images):
+        image = cv2.imread(os.path.join(source_images_folder, filename))
+        mask = cv2.imread(os.path.join(source_masks_folder, filename), cv2.IMREAD_GRAYSCALE)
+        shadow = np.ones_like(image.shape)
+        kernel = np.ones((3, 3), np.uint8) * 10
+        erosion = cv2.erode(mask, kernel, iterations=10)
+        mask = cv2.dilate(erosion, kernel, iterations=10)
+        shift_x = np.random.randint(1, 10) * np.random.choice([-1, 1])
+        shift_y = np.random.randint(1, 10)
+        M = np.float32([
+            [1, 0, shift_x],
+            [0, 1, shift_y]
+        ])
+        mask_shifted = cv2.warpAffine(mask, M, (mask.shape[1], mask.shape[0]))
+        diff = cv2.subtract(mask_shifted, mask)
+        ret, diff = cv2.threshold(diff, 1, 1, cv2.THRESH_BINARY)
+        diff = np.stack((diff, diff, diff), axis=2)
+
+        if shift_x > shift_y:
+            shift_x = shift_x / np.abs(shift_y)
+            shift_y = shift_y / np.abs(shift_y)
+        elif shift_x < shift_y:
+            shift_y = shift_y / np.abs(shift_x)
+            shift_x = shift_x / np.abs(shift_x)
+        else:
+            shift_x = shift_x / np.abs(shift_x)
+            shift_y = shift_y / np.abs(shift_y)
+        M = np.float32([
+            [1, 0, shift_x * 2.5],
+            [0, 1, shift_y * 2.5]
+        ])
+        diff = cv2.warpAffine(diff, M, (diff.shape[1], diff.shape[0]))  # diff為陰影的mask
+        image = image[:, :, :] * (1 - diff * 0.7) + shadow * diff
+        image = image.astype(np.uint8)
+        cv2.imshow('win', image)
+        # cv2.imshow('diff', mask_diff)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+
+
 if __name__ == "__main__":
     print()
     # find_items()
     # get_sizeof_product()
     # extract_val_obj()
-    check_each_class_instance_count()
+    # check_each_class_instance_count()
+
+    create_synthesys_shadow('/Users/ianlin/datasets/rpc_list/synthesize_20000',
+                            '/Users/ianlin/datasets/rpc_list/synthesize_20000_masks',
+                            '/Users/ianlin/datasets/rpc_list/synthesize_20000_shadow')
