@@ -12,7 +12,7 @@ class Config:
             self.datasets_root = str(Path(r'/media/ian/WD/datasets'))
         elif platform == "darwin":  # on mac
             # OS X
-            raise Exception("no dataset on mac.")
+            self.datasets_root = str(Path(r'/media/ian/WD/datasets'))
         elif platform == "win32":  # on Windows
             # Windows...
             self.datasets_root = str(Path(r'D:\datasets'))
