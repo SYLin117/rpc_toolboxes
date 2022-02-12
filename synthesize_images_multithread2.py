@@ -157,9 +157,11 @@ def sample_select_object_index(category, paths, ratio_annotations, threshold=0.5
     # else:
     #     high_threshold_paths = [path for path in paths if ratio_annotations[os.path.basename(path)] > threshold]
     high_threshold_paths = [path for path in paths if ratio_annotations[os.path.basename(path)] > threshold]
-    if len(high_threshold_paths) == 0:  # 如果沒有>threshold的圖片 則取最大的
-        ratio_list = [ratio_annotations[os.path.basename(path)] for path in paths]
-        high_threshold_paths.append(paths[ratio_list.index(max(ratio_list))])
+    while len(high_threshold_paths) == 0:  # 如果沒有>threshold的圖片 則取最大的
+        threshold -= 0.1
+        high_threshold_paths = [path for path in paths if ratio_annotations[os.path.basename(path)] > threshold]
+        # ratio_list = [ratio_annotations[os.path.basename(path)] for path in paths]
+        # high_threshold_paths.append(paths[ratio_list.index(max(ratio_list))])
     # high_threshold_paths = paths
     index = random.randint(0, len(high_threshold_paths) - 1)
     path = high_threshold_paths[index]
@@ -441,8 +443,10 @@ if __name__ == '__main__':
         angles = cat_2_angle[value['sku_class']]
         if value['cat_id'] in [160, 161, 162, 163]:  # 瓶裝的調味料(seasoner)(其他是包裝的)
             angles = [3]
-        if value['cat_id'] in [37, 39, 40, 41]:  # 包裝類的即溶飲料(instant-drink)(其他是罐裝的)
+        elif value['cat_id'] in [37, 39, 40, 41]:  # 包裝類的即溶飲料(instant-drink)(其他是罐裝的)
             angles = [1]
+        elif value['cat_id'] in [134, 135, 144]: # canned candy(not package)
+            angles = [0]
         for ca in angles:
             for ra in rotate_angles:
                 object_paths += glob.glob(os.path.join(train_imgs_dir, '{}_camera{}-{}.jpg'.format(code, ca, ra)))
@@ -469,7 +473,7 @@ if __name__ == '__main__':
     json_img = []
     ann_idx = 0
     finished_img = 0
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=16) as executor:
         futures = []
         for image_id, num_per_category in strategics:
             future = executor.submit(create_image, image_id, num_per_category, bg_img_cv, mask_img_cv, )
