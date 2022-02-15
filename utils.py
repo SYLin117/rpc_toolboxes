@@ -213,6 +213,20 @@ def create_synthesys_shadow(source_images_folder, source_masks_folder, new_folde
         cv2.destroyAllWindows()
 
 
+def create_synthesys_shadow2(source_images_folder, source_masks_folder, new_folder):
+    images = os.listdir(source_images_folder)
+    masks = os.listdir(source_masks_folder)
+    images.sort()
+    masks.sort()
+    for i, filename in enumerate(images):
+        image = cv2.imread(os.path.join(source_images_folder, filename), cv2.IMREAD_GRAYSCALE)
+        mask = cv2.imread(os.path.join(source_masks_folder, filename), cv2.IMREAD_GRAYSCALE)
+        edges = cv2.Canny(image, 100, 200)
+        cv2.imshow('win', edges)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+
+
 if __name__ == "__main__":
     print()
     # find_items()
@@ -220,6 +234,6 @@ if __name__ == "__main__":
     # extract_val_obj()
     # check_each_class_instance_count()
 
-    create_synthesys_shadow('/Users/ianlin/datasets/rpc_list/synthesize_20000',
-                            '/Users/ianlin/datasets/rpc_list/synthesize_20000_masks',
-                            '/Users/ianlin/datasets/rpc_list/synthesize_20000_shadow')
+    create_synthesys_shadow2('D:\\datasets\\rpc_list\\synthesize_10000',
+                             'D:\\datasets\\rpc_list\\synthesize_10000_masks',
+                             'D:\\datasets\\rpc_list\\synthesize_10000_shadows')
