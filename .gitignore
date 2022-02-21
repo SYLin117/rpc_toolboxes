@@ -8,3 +8,5 @@ synthesize_SOD_density_map_0_45_threshold_val/
 **/*.pth
 **/*.jpg
 **/*.png
+sod_*.json
+strategics_train.json
