@@ -22,9 +22,6 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_compl
 使用multithread製作偽造影像
 """
 
-NUM_CATEGORIES = 200
-GENERATED_NUM = 10000
-
 CATEGORIES = ['__background__', '1_puffed_food', '2_puffed_food', '3_puffed_food', '4_puffed_food', '5_puffed_food',
               '6_puffed_food', '7_puffed_food',
               '8_puffed_food', '9_puffed_food', '10_puffed_food', '11_puffed_food', '12_puffed_food', '13_dried_fruit',
@@ -74,7 +71,7 @@ CATEGORIES = ['__background__', '1_puffed_food', '2_puffed_food', '3_puffed_food
               '198_stationery', '199_stationery', '200_stationery']
 
 np.random.seed(42)
-CAT_COLORS = (np.random.rand(201, 3) * 255).astype(np.uint8)
+CAT_COLORS = (1-(np.random.rand(201, 3)) * 255).astype(np.uint8)
 CAT_COLORS[0, :] = [0, 0, 0]
 
 
@@ -226,7 +223,7 @@ def create_image(image_id, num_per_category, bg_img_cv, mask_img_cv):
         for _ in range(count):
             paths = object_category_paths[category]
 
-            object_path = sample_select_object_index(category, paths, ratio_annotations, threshold=0.2)
+            object_path = sample_select_object_index(category, paths, ratio_annotations, threshold=0.45)
 
             name = os.path.basename(object_path)
             mask_path = os.path.join(train_imgs_mask_dir, '{}.png'.format(name.split('.')[0]))
@@ -248,9 +245,9 @@ def create_image(image_id, num_per_category, bg_img_cv, mask_img_cv):
             # ---------------------------
             scale = 1
             if item_size[str(category)] == 'large':
-                scale = random.uniform(0.5, 0.6)
+                scale = random.uniform(0.55, 0.65)
             elif item_size[str(category)] == 'medium':
-                scale = random.uniform(0.6, 0.8)
+                scale = random.uniform(0.65, 0.75)
             elif item_size[str(category)] == 'small':
                 scale = 1
 
@@ -295,26 +292,26 @@ def create_image(image_id, num_per_category, bg_img_cv, mask_img_cv):
             bg_img.paste(obj, box=(pos_x, pos_y), mask=mask)
             if save_mask:
                 color_mask = Image.new('RGB', mask.size, tuple(CAT_COLORS[category]))  # 挑到mask畫面上的物件mask
-                color_mask_cv2 = np.asarray(color_mask)
-                mask_cv2 = np.asarray(mask)
-                kernel = np.ones((3, 3), np.uint8)
-                erosion = cv2.erode(mask_cv2, kernel, iterations=3)
-                diff = cv2.absdiff(mask_cv2, erosion) / 255  # use as mask for black border paint on color mask
-                diff = np.stack((diff, diff, diff), axis=2)  # make it to 3-channel
-                blank_image = np.zeros((mask.size[1], mask.size[0], 3), np.uint8)
-                # 為了讓相同的物件重疊的時候有黑邊可以區隔
-                color_mask_cv2[:, :, :] = color_mask_cv2[:, :, :] * (1 - diff) + blank_image * diff
-                # _, mask_cv2 = cv2.threshold(mask_cv2, 127, 255, cv2.THRESH_BINARY_INV)
-
+                # ----------------- # using erode to create border for different mask ----------------------
+                # color_mask_cv2 = np.asarray(color_mask)
+                # mask_cv2 = np.asarray(mask)
+                # kernel = np.ones((3, 3), np.uint8)
+                # erosion = cv2.erode(mask_cv2, kernel, iterations=3)
+                # diff = cv2.absdiff(mask_cv2, erosion) / 255  # use as mask for black border paint on color mask
+                # diff = np.stack((diff, diff, diff), axis=2)  # make it to 3-channel
+                # blank_image = np.zeros((mask.size[1], mask.size[0], 3), np.uint8)
+                # # 為了讓相同的物件重疊的時候有黑邊可以區隔
+                # color_mask_cv2[:, :, :] = color_mask_cv2[:, :, :] * (1 - diff) + blank_image * diff
+                # color_mask = Image.fromarray(color_mask_cv2)
+                # ---------------------------------------
+                # ## ------------ another way to make mask border
                 # ## 找出mask的邊界
-                # ## ------------
                 # Contours, _ = cv2.findContours(erosion, cv2.RETR_EXTERNAL,
                 #                                cv2.CHAIN_APPROX_TC89_KCOS)
                 # for cnt in Contours:
                 #     hull = cv2.convexHull(cnt)
                 #     cv2.drawContours(color_mask_cv2, [hull], -1, color=(0, 0, 0), thickness=4, )
                 # ## ------------
-                color_mask = Image.fromarray(color_mask_cv2)
                 mask_img.paste(color_mask, box=(pos_x, pos_y), mask=mask)
             # plt.imshow(mask)
             # plt.show()
@@ -363,11 +360,13 @@ def create_image(image_id, num_per_category, bg_img_cv, mask_img_cv):
 
 if __name__ == '__main__':
     parser = ArgumentParser(description="Synthesize fake images")
+    parser.add_argument('--gen_num', type=int, default=None, required=True, help='how many number of images need to create.')
     parser.add_argument('--count', type=int, default=1)  ## original=32
     parser.add_argument('--local_rank', type=int, default=0)
     args = parser.parse_args()
-
     ###########################################################################################
+    NUM_CATEGORIES = 200
+    GENERATED_NUM = args.gen_num
     ###########################################################################################
     counter = {
         'easy_mode': 0,
@@ -438,14 +437,18 @@ if __name__ == '__main__':
         cat_2_angle = json.load(fid)
     with open('product_code.json') as fid:
         product_code = json.load(fid)
-    rotate_angles = [str(x) for x in range(1, 40, 2)]
+    rotate_angles = [str(x) for x in range(1, 40, 3)]
     for code, value in product_code.items():
         angles = cat_2_angle[value['sku_class']]
         if value['cat_id'] in [160, 161, 162, 163]:  # 瓶裝的調味料(seasoner)(其他是包裝的)
             angles = [3]
         elif value['cat_id'] in [37, 39, 40, 41]:  # 包裝類的即溶飲料(instant-drink)(其他是罐裝的)
             angles = [1]
-        elif value['cat_id'] in [134, 135, 144]: # canned candy(not package)
+        elif value['cat_id'] in [134, 135, 144]:  # canned candy(not package)
+            angles = [0]
+        elif value['cat_id'] in [45, 46, 47, 48, 49]:  # cup noodle
+            angles = [0, 2]
+        elif value['cat_id'] in [198, 200]:  # cylinder-like
             angles = [0]
         for ca in angles:
             for ra in rotate_angles:
