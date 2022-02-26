@@ -293,9 +293,9 @@ def synthesize(strategics, save_json_file='', output_dir='', save_mask=False, tr
                 # ---------------------------
                 scale = 1
                 if item_size[str(category)] == 'large':
-                    scale = random.uniform(0.5, 0.6)
+                    scale = random.uniform(0.35, 0.55)
                 elif item_size[str(category)] == 'medium':
-                    scale = random.uniform(0.7, 0.8)
+                    scale = random.uniform(0.55, 0.7)
                 elif item_size[str(category)] == 'small':
                     scale = 1
 

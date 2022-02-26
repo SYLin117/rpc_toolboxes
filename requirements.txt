@@ -1,0 +1,7 @@
+pycocotools
+matplotlib
+torchinfo
+tqdm
+scipy
+pandas
+albumentations
