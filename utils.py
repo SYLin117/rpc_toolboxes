@@ -1,6 +1,9 @@
 import json
 import glob
 import os
+
+import pandas as pd
+
 from config import Config
 from collections import defaultdict, OrderedDict
 import shutil
@@ -15,6 +18,7 @@ import matplotlib.pyplot as plt
 import time
 import skimage
 from typing import Optional
+import seaborn as sns
 
 RPC_CLASSES = (
     '1_puffed_food', '2_puffed_food', '3_puffed_food', '4_puffed_food', '5_puffed_food',
@@ -123,21 +127,44 @@ def get_sizeof_product():
         cat_2_angle = json.load(fid)
     with open('product_code.json') as fid:
         product_code = json.load(fid)
-    with open('ratio_annotations.json') as fid:
+    with open('ratio_annotations_all.json') as fid:
         ratio_annotations = json.load(fid)
-
-    object_paths = list()
-    rotate_angles = ['1', '12', '21', '32']
+    class_2_product_code = {}
+    for k, v in product_code.items():
+        class_2_product_code["{}_{}".format(v['cat_id'], v['sku_class'])] = k
+    train_imgs_dir = os.path.join(cfg.get_dataset_root(), 'retail_product_checkout', 'train2019')  # rpc 的train影像資料夾
+    object_paths = []
+    rotate_angles = [str(x) for x in range(1, 40, 3)]
     for code, value in product_code.items():
         angles = cat_2_angle[value['sku_class']]
-        if value['cat_id'] in [160, 161, 162, 163]:
+        if value['cat_id'] in [160, 161, 162, 163]:  # 瓶裝的調味料(seasoner)(其他是包裝的)
             angles = [3]
-        for ca in angles:
-            for ra in rotate_angles:
-                object_paths += glob.glob(os.path.join(cfg.get_dataset_root(), 'retail_product_checkout', 'train2019',
-                                                       '{}_camera{}-{}.jpg'.format(code, ca, ra)))
-                object_paths += glob.glob(os.path.join(cfg.get_dataset_root(), 'retail_product_checkout', 'train2019',
-                                                       '{}-back_camera{}-{}.jpg'.format(code, ca, ra)))
+        elif value['cat_id'] in [37, 39, 40, 41]:  # 包裝類的即溶飲料(instant-drink)(其他是罐裝的)
+            angles = [1]
+        elif value['cat_id'] in [134, 135, 144]:  # canned candy(not package)
+            angles = [0]
+        elif value['cat_id'] in [45, 46, 47, 48, 49]:  # cup noodle
+            angles = [0, 2]
+        elif value['cat_id'] in [198, 200]:  # cylinder-like
+            angles = [0]
+        for ca in angles:  # camera angle
+            for ra in rotate_angles:  # rotate angle
+                object_paths += glob.glob(os.path.join(train_imgs_dir, '{}_camera{}-{}.jpg'.format(code, ca, ra)))
+                object_paths += glob.glob(
+                    os.path.join(train_imgs_dir, '{}-back_camera{}-{}.jpg'.format(code, ca, ra)))  # 有背面的商品
+    tissue_remove_paths = []
+    tissue_nos = [i for i in range(174, 194)]
+    tissue_remove_rotate_angles = [i for i in range(3, 17)] + [i for i in range(22, 38)]
+    for tissue_no in tissue_nos:
+        code = class_2_product_code["{}_tissue".format(tissue_no)]
+        angles = [0, 1, 2, 3]
+        for ca in angles:  # camera angle
+            for ra in tissue_remove_rotate_angles:
+                tissue_remove_paths += glob.glob(
+                    os.path.join(train_imgs_dir, '{}_camera{}-{}.jpg'.format(code, ca, ra)))
+                tissue_remove_paths += glob.glob(
+                    os.path.join(train_imgs_dir, '{}-back_camera{}-{}.jpg'.format(code, ca, ra)))
+    object_paths = list(set(object_paths).difference(set(tissue_remove_paths)))
 
     object_category_paths = defaultdict(list)
     for path in object_paths:
@@ -146,28 +173,36 @@ def get_sizeof_product():
         object_category_paths[category].append(path)
     object_category_paths = dict(object_category_paths)  # store each categories all single images
     ratio_list = list()
-    for key, values in object_category_paths.items():
-        if key == 160:
-            print(" ")
-        min_ratio = 1
+    for key, values in object_category_paths.items():  # key: product_id, values:file paths
+        ratios = []
         for value in values:
-            if min_ratio > ratio_annotations[os.path.basename(value)]:
-                min_ratio = ratio_annotations[os.path.basename(value)]
-        ratio_list.append((key, min_ratio))
+            ratios.append(ratio_annotations["{}.png".format(os.path.basename(value).split('.')[0])])
+        ratios = np.array(ratios)
+        ratio_list.append((key, ratios.max()))
 
     sorted(ratio_list, key=itemgetter(0))
     print(ratio_list)
     size_dict = OrderedDict()
     for id, ratio in ratio_list:
-
-        if ratio > 0.65:
+        if ratio > 0.6:
+            size_dict[id] = 'super_large'
+        if ratio > 0.4:
+            size_dict[id] = 'extra_large'
+        elif ratio > 0.2:
             size_dict[id] = 'large'
-        elif ratio > 0.4:
+        elif ratio > 0.166:
             size_dict[id] = 'medium'
-        else:
+        elif ratio > 0.133:
             size_dict[id] = 'small'
-    with open("item_size.json", "w") as outfile:
-        json.dump(size_dict, outfile)
+        elif ratio > .08:
+            size_dict[id] = 'little'
+        elif ratio <= 0.04:
+            size_dict[id] = 'tiny'
+        else:
+            size_dict[id] = 'little'
+    order_size_dict = OrderedDict(sorted(size_dict.items()))
+    with open("item_size_all.json", "w") as outfile:
+        json.dump(order_size_dict, outfile, indent=4)
 
 
 def extract_val_obj():
@@ -405,7 +440,7 @@ def check_coco_seg_format(json_path):
     with open(json_path) as fid:
         json_data = json.load(fid)
     annotations = json_data['annotations']
-    for annotation in annotations:
+    for annotation in tqdm(annotations):
         segs = annotation['segmentation']
         new_segs = []
         for seg in segs:
@@ -486,8 +521,22 @@ def visualize_bbox(json_path, img_path, save_path, COLORS: np.ndarray, CLASSES: 
             vis(img_cv, ann['bbox'], ann['category_id'], CLASSES)
 
 
+def check_ratio(json_path):
+    with open(json_path) as fid:
+        ratio_dict = json.load(fid)
+    for k, v in ratio_dict.items():
+        ratio_dict[k] = round(ratio_dict[k], 2)
+    ratio_list = [val for _, val in ratio_dict.items()]
+    data = {'values': ratio_list}
+    df = pd.DataFrame.from_dict(data)
+    # plt.hist(ratio_list, color='g', bins=.05)
+    sns.histplot(df, binwidth=.02)
+    # plt.bar(list(dictionary.keys()), dictionary.values(), color='g')
+    plt.show()
+
+
 if __name__ == "__main__":
-    print()
+    print("...main...")
     # find_items()
     # get_sizeof_product()
     # extract_val_obj()
@@ -502,31 +551,31 @@ if __name__ == "__main__":
     ## ---------------------------------------
     # check_ann_duplicate_id('/media/ian/WD/datasets/rpc_list/sod_synthesize_15000_0.json')
     ## ---------------------------------------
-    ## resize coco dataset (include json file, masks and images)
-    # name = 'synthesize_30_mix'
+    ### resize coco dataset (include json file, masks and images)
+    # name = 'synthesize_15000_best'
     # image_folder = '/media/ian/WD/datasets/rpc_list/{}'.format(name)
     # mask_folder = '/media/ian/WD/datasets/rpc_list/{}_mask'.format(name)
     # json_file = '/media/ian/WD/datasets/rpc_list/{}.json'.format(name)
     # target_image_folder = '/media/ian/WD/datasets/rpc_list/{}_small'.format(name)
     # target_mask_folder = '/media/ian/WD/datasets/rpc_list/{}_mask_small'.format(name)
     # target_json_file = '/media/ian/WD/datasets/rpc_list/{}_small.json'.format(name)
-    image_folder = '/media/ian/WD/datasets/retail_product_checkout/val2019'
-    mask_folder = None
-    json_file = '/media/ian/WD/datasets/retail_product_checkout/annotations/instances_val2019.json'
-    target_image_folder = '/media/ian/WD/datasets/retail_product_checkout/smallval2019'
-    target_mask_folder = None
-    target_json_file = '/media/ian/WD/datasets/retail_product_checkout/annotations/instances_smallval2019.json'
-    rescale_coco_data(image_folder=image_folder,
-                      mask_folder=mask_folder,
-                      json_file=json_file,
-                      target_size=750,
-                      target_image_folder=target_image_folder,
-                      target_mask_folder=target_mask_folder,
-                      target_json_file=target_json_file)
+    # # image_folder = '/media/ian/WD/datasets/retail_product_checkout/val2019'
+    # # mask_folder = None
+    # # json_file = '/media/ian/WD/datasets/retail_product_checkout/annotations/instances_val2019.json'
+    # # target_image_folder = '/media/ian/WD/datasets/retail_product_checkout/smallval2019'
+    # # target_mask_folder = None
+    # # target_json_file = '/media/ian/WD/datasets/retail_product_checkout/annotations/instances_smallval2019.json'
+    # rescale_coco_data(image_folder=image_folder,
+    #                   mask_folder=mask_folder,
+    #                   json_file=json_file,
+    #                   target_size=750,
+    #                   target_image_folder=target_image_folder,
+    #                   target_mask_folder=target_mask_folder,
+    #                   target_json_file=target_json_file)
     ## --------------------------------------
-    # json_path = f'/media/ian/WD/datasets/rpc_list/synthesize_10_test.json'
-    # img_path = f'/media/ian/WD/datasets/rpc_list/synthesize_10_test'
-    # save_path = f'/media/ian/WD/datasets/rpc_list/synthesize_10_test_labeled'
+    # json_path = f'/media/ian/WD/datasets/rpc_list/synthesize_15000_best.json'
+    # img_path = f'/media/ian/WD/datasets/rpc_list/synthesize_15000_best'
+    # save_path = f'/media/ian/WD/datasets/rpc_list/synthesize_15000_best_labeled'
     # np.random.seed(42)
     # _COLORS = np.random.rand(200, 3)
     # visualize_bbox(json_path=json_path, img_path=img_path, save_path=save_path, COLORS=_COLORS, CLASSES=RPC_CLASSES)
@@ -535,4 +584,8 @@ if __name__ == "__main__":
     # mask_np = cv2.imread(mask, cv2.IMREAD_COLOR)
     # print(np.unique(mask_np))
     ## ----------------------------------------
-    check_coco_seg_format('/media/ian/WD/datasets/rpc_list/synthesize_100_mix_small_with_seg.json')
+    check_coco_seg_format('/media/ian/WD/datasets/rpc_list/synthesize_15000_best_small_seg.json')
+    ## ----------------------------------------
+    # check_ratio('./ratio_annotations_all.json')
+    ## ----------------------------------------
+    # get_sizeof_product()

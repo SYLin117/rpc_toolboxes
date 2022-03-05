@@ -9,6 +9,9 @@ import os
 from tqdm import tqdm
 """
 create annotation for rpc dataset 
+
+after running this program create segmentation data
+please run the utils.py check_coco_seg_format() to make sure json data is correct 
 """
 
 
@@ -91,7 +94,7 @@ if __name__ == "__main__":
     # bottle_book_mask_image = Image.open('./example_images/bottle_book_mask.png').convert('RGB')
     #
     # mask_images = [plant_book_mask_image, bottle_book_mask_image]
-    name = 'synthesize_100_mix'
+    name = 'synthesize_15000_best'
     mask_path = '/media/ian/WD/datasets/rpc_list/{}_mask_small'.format(name)
     json_path = '/media/ian/WD/datasets/rpc_list/{}_small.json'.format(name)
     mask_images = glob.glob(os.path.join(mask_path, "*.png"))
@@ -132,22 +135,28 @@ if __name__ == "__main__":
         category_ids = color_infos[filename.split('.')[0]]['color_dict']
         # for color, sub_mask in sub_masks.items():
         for color, cat in category_ids.items():
-            sub_mask = sub_masks[color]
-            # category_id = category_ids[image_id][color]
-            ## show sub_mask
-            # plt.imshow(sub_mask)
-            # plt.show()
-            sub_mask_np = np.array(sub_mask)
-            annotation = create_sub_mask_annotation(sub_mask=sub_mask_np,
-                                                    image_id=image_id,
-                                                    category_id=cat,
-                                                    annotation_id=annotation_id,
-                                                    is_crowd=is_crowd)
-            annotations.append(annotation)
-            annotation_id += 1
+            try:
+                sub_mask = sub_masks[color]
+                # category_id = category_ids[image_id][color]
+                ## show sub_mask
+                # plt.imshow(sub_mask)
+                # plt.show()
+                sub_mask_np = np.array(sub_mask)
+                annotation = create_sub_mask_annotation(sub_mask=sub_mask_np,
+                                                        image_id=image_id,
+                                                        category_id=cat,
+                                                        annotation_id=annotation_id,
+                                                        is_crowd=is_crowd)
+                annotations.append(annotation)
+                annotation_id += 1
+            except KeyError as ke:
+                print("filename: {}".format(filename))
+                print("sub_mask got: {}".format(sub_masks))
+                print("got KeyError with color: {}".format(color))
+
         image_id += 1
     json_data['annotations'] = annotations
     del json_data['color']
-    with open('/media/ian/WD/datasets/rpc_list/{}_small_with_seg.json'.format(name), 'w', encoding='utf-8') as f:
+    with open('/media/ian/WD/datasets/rpc_list/{}_small_seg.json'.format(name), 'w', encoding='utf-8') as f:
         json.dump(json_data, f, ensure_ascii=False, indent=4)
     # print(json.dumps(annotations))

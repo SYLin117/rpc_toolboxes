@@ -19,6 +19,9 @@ import matplotlib.pyplot as plt
 import multiprocessing
 from threading import Lock
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+from bounded_pool_executor import BoundedThreadPoolExecutor
+import gc
+import traceback
 
 """
 使用multithread製作偽造影像
@@ -129,7 +132,7 @@ def buy_strategic(counter):
 
         generated += count
         num_per_category[int(category)] = count
-    return num_per_category
+    return num_per_category, difficulty
 
 
 def check_iou(annotations, box, threshold=0.5):
@@ -241,204 +244,227 @@ def gaussian_filter_density(gt):
 
 
 def create_image(image_id, num_per_category, lock: Lock):
-    global ann_idx, json_ann, json_img, json_color  # ann_idx: for create new annotation id, json_ann: new annotation list, json_img: new image list
-    instance_num = 0
-    for category, count in num_per_category.items():
-        instance_num += count
-    INSTANCE_COLOR = (1 - (np.random.rand(instance_num, 3)) * 255).astype(np.uint8)
-    instance_id = 0
-    color_cat_dict = {}
-    color_annId_dict = {}
-    # ----------------- get background image --------------------
-    background_id = random.randint(1, 3)
-    bg_img_cv = cv2.imread('bg{}.jpg'.format(background_id), cv2.IMREAD_COLOR)
-    bg_img_cv = cv2.cvtColor(bg_img_cv, cv2.COLOR_BGR2RGB)
-    bg_height, bg_width = bg_img_cv.shape[:2]
-    mask_img_cv = np.zeros((bg_height, bg_width, 3), dtype=np.uint8)
-    # ----------------- get background image --------------------
-    img_id_num = image_id.split('_')[2]
-    bg_img = Image.fromarray(bg_img_cv)
-    mask_img = Image.fromarray(mask_img_cv)
-    mask_img_np = mask_img_cv.copy()  # mask background image
-    obj_in_this_pic = list()
-    for category, count in num_per_category.items():
-        category = int(category)
-        for _ in range(count):
-            paths = object_category_paths[category]
+    try:
+        global level_dict, ann_idx, json_ann, json_img, json_color  # ann_idx: for create new annotation id, json_ann: new annotation list, json_img: new image list
+        instance_num = 0
+        for category, count in num_per_category.items():
+            instance_num += count
+        INSTANCE_COLOR = (1 - (np.random.rand(instance_num, 3)) * 255).astype(np.uint8)
+        instance_id = 0
+        color_cat_dict = {}
+        color_annId_dict = {}
+        # ----------------- get background image --------------------
+        background_id = random.randint(1, 3)
+        bg_img_cv = cv2.imread('bg{}.jpg'.format(background_id), cv2.IMREAD_COLOR)
+        bg_img_cv = cv2.cvtColor(bg_img_cv, cv2.COLOR_BGR2RGB)
+        bg_height, bg_width = bg_img_cv.shape[:2]
+        mask_img_cv = np.zeros((bg_height, bg_width, 3), dtype=np.uint8)
+        # ----------------- get background image --------------------
+        img_id_num = image_id.split('_')[2]
+        bg_img = Image.fromarray(bg_img_cv)
+        mask_img = Image.fromarray(mask_img_cv)
+        mask_img_np = mask_img_cv.copy()  # mask background image
+        obj_in_this_pic = list()
+        for category, count in num_per_category.items():
+            category = int(category)
+            for _ in range(count):
+                paths = object_category_paths[category]
 
-            object_path = sample_select_object_index(category, paths, ratio_annotations, threshold=0.45)
+                object_path = sample_select_object_index(category, paths, ratio_annotations, threshold=0.45)
 
-            name = os.path.basename(object_path)
-            mask_path = os.path.join(train_imgs_mask_dir, '{}.png'.format(name.split('.')[0]))
+                name = os.path.basename(object_path)
+                mask_path = os.path.join(train_imgs_mask_dir, '{}.png'.format(name.split('.')[0]))
 
-            obj = Image.open(object_path)
-            mask = Image.open(mask_path).convert('1')
-            original_width = obj.width
-            original_height = obj.height
-            # dense object bbox
-            # ---------------------------
-            # Crop according to json annotation
-            # ---------------------------
-            x, y, w, h = get_object_bbox(annotations[name], original_width, original_height)
-            obj = obj.crop((x, y, x + w, y + h))
-            mask = mask.crop((x, y, x + w, y + h))
+                obj = Image.open(object_path)
+                mask = Image.open(mask_path).convert('1')
+                original_width = obj.width
+                original_height = obj.height
+                # dense object bbox
+                # ---------------------------
+                # Crop according to json annotation
+                # ---------------------------
+                x, y, w, h = get_object_bbox(annotations[name], original_width, original_height)
+                obj = obj.crop((x, y, x + w, y + h))
+                mask = mask.crop((x, y, x + w, y + h))
 
-            # ---------------------------
-            # Random scale
-            # ---------------------------
-            scale = 1
-            if item_size[str(category)] == 'large':
-                scale = random.uniform(0.4, 0.55)
-            elif item_size[str(category)] == 'medium':
-                scale = random.uniform(0.7, 0.8)
-            elif item_size[str(category)] == 'small':
-                scale = random.uniform(1.1, 1.3)
+                # ---------------------------
+                # Random scale
+                # ---------------------------
+                scale = 1
+                # ratio = ratio_annotations_all["{}.png".format(os.path.basename(object_path).split('.')[0])]
+                # base_ratio = 25
+                # if ratio >= .2:
+                #     scale = random.uniform(.2, .4)
+                # elif ratio >= .1:
+                #     scale = random.uniform(.2, .45)
+                # elif ratio >= .05:
+                #     scale = random.uniform(.2, .5)
+                # else:
+                #     scale = random.uniform(.2, .55)
+                ## TODO
+                if item_size[str(category)] == 'super_large':
+                    scale = random.uniform(0.3, 0.55)
+                elif item_size[str(category)] == 'extra_large':
+                    scale = random.uniform(0.3, 0.55)
+                elif item_size[str(category)] == 'large':
+                    scale = random.uniform(0.33, 0.6)
+                elif item_size[str(category)] == 'medium':
+                    scale = random.uniform(0.36, 0.6)
+                elif item_size[str(category)] == 'small':
+                    scale = random.uniform(.4, 0.6)
+                elif item_size[str(category)] == 'little':
+                    scale = random.uniform(.4, 0.7)
+                elif item_size[str(category)] == 'tiny':
+                    scale = random.uniform(.5, .7)
 
-            w, h = int(w * scale), int(h * scale)
-            obj = obj.resize((w, h), resample=Image.BILINEAR)
-            mask = mask.resize((w, h), resample=Image.BILINEAR)
+                w, h = int(w * scale), int(h * scale)
+                obj = obj.resize((w, h), resample=Image.BILINEAR)
+                mask = mask.resize((w, h), resample=Image.BILINEAR)
 
-            # ---------------------------
-            # Random rotate
-            # ---------------------------
-            angle = random.random() * 360
-            obj = obj.rotate(angle, resample=Image.BILINEAR, expand=True)
-            mask = mask.rotate(angle, resample=Image.BILINEAR, expand=True)
+                # ---------------------------
+                # Random rotate
+                # ---------------------------
+                angle = random.random() * 360
+                obj = obj.rotate(angle, resample=Image.BILINEAR, expand=True)
+                mask = mask.rotate(angle, resample=Image.BILINEAR, expand=True)
 
-            # ---------------------------
-            # Crop according to mask
-            # ---------------------------
-            where = np.where(np.array(mask))  # value == 255 location
-            # where = np.vstack((where[0], where[1]))  ## ian added
-            assert len(where[0]) != 0
-            assert len(where[1]) != 0
-            assert len(where[0]) == len(where[1])
-            area = len(where[0])
-            y1, x1 = np.amin(where, axis=1)
-            y2, x2 = np.amax(where, axis=1)
+                # ---------------------------
+                # Crop according to mask
+                # ---------------------------
+                where = np.where(np.array(mask))  # value == 255 location
+                # where = np.vstack((where[0], where[1]))  ## ian added
+                assert len(where[0]) != 0
+                assert len(where[1]) != 0
+                assert len(where[0]) == len(where[1])
+                area = len(where[0])
+                y1, x1 = np.amin(where, axis=1)
+                y2, x2 = np.amax(where, axis=1)
 
-            obj = obj.crop((x1, y1, x2, y2))
-            mask = mask.crop((x1, y1, x2, y2))
-            w, h = obj.width, obj.height
+                obj = obj.crop((x1, y1, x2, y2))
+                mask = mask.crop((x1, y1, x2, y2))
+                w, h = obj.width, obj.height
 
-            pad = 2
-            pos_x, pos_y = generated_position(bg_width, bg_height, w, h, pad)
-            start = time.time()
-            threshold = 0.2
-            while not check_iou(obj_in_this_pic, box=(pos_x, pos_y, w, h), threshold=threshold):
-                if (time.time() - start) > 10:  # cannot find a valid position in 3 seconds
-                    start = time.time()
-                    threshold += 0.05
-                    continue
+                pad = 2
                 pos_x, pos_y = generated_position(bg_width, bg_height, w, h, pad)
+                start = time.time()
+                threshold = 0.2
+                while not check_iou(obj_in_this_pic, box=(pos_x, pos_y, w, h), threshold=threshold):
+                    if (time.time() - start) > 10:  # cannot find a valid position in 3 seconds
+                        start = time.time()
+                        threshold += 0.05
+                        continue
+                    pos_x, pos_y = generated_position(bg_width, bg_height, w, h, pad)
 
-            bg_img.paste(obj, box=(pos_x, pos_y), mask=mask)
+                bg_img.paste(obj, box=(pos_x, pos_y), mask=mask)
 
-            # plt.imshow(mask)
+                # plt.imshow(mask)
+                # plt.show()
+
+                # ---------------------------
+                # Find center of mass
+                # ---------------------------
+                mask_array = np.array(mask)
+                center_of_mass = ndimage.measurements.center_of_mass(mask_array)  # y, x
+                center_of_mass = [int(round(x)) for x in center_of_mass]
+                center_of_mass = center_of_mass[1] + pos_x, center_of_mass[0] + pos_y  # map to whole image
+                with lock:
+                    json_ann.append({
+                        'bbox': (pos_x, pos_y, w, h),
+                        'category_id': category,
+                        'center_of_mass': center_of_mass,
+                        'area': area,
+                        'image_id': int(img_id_num),
+                        'iscrowd': 0,
+                        'id': ann_idx
+                    })
+                    obj_in_this_pic.append({
+                        'bbox': (pos_x, pos_y, w, h),
+                        'category_id': category,
+                        'center_of_mass': center_of_mass,
+                        'area': area,
+                        'image_id': int(img_id_num),
+                        'iscrowd': 0,
+                        'id': ann_idx
+                    })
+                    if save_mask:
+                        color_mask = Image.new('RGB', mask.size,
+                                               tuple(INSTANCE_COLOR[instance_id].tolist()))  # 挑到mask畫面上的物件mask
+                        color_tuple_list = INSTANCE_COLOR[instance_id].tolist()
+                        color_tuple_list.reverse()
+                        color_cat_dict[str(tuple(color_tuple_list))] = category
+                        color_annId_dict[str(tuple(color_tuple_list))] = ann_idx
+
+                        # ----------------- # using erode to create border for different mask ----------------------
+                        # color_mask_cv2 = np.asarray(color_mask)
+                        # mask_cv2 = np.asarray(mask)
+                        # kernel = np.ones((3, 3), np.uint8)
+                        # erosion = cv2.erode(mask_cv2, kernel, iterations=3)
+                        # diff = cv2.absdiff(mask_cv2, erosion) / 255  # use as mask for black border paint on color mask
+                        # diff = np.stack((diff, diff, diff), axis=2)  # make it to 3-channel
+                        # blank_image = np.zeros((mask.size[1], mask.size[0], 3), np.uint8)
+                        # # 為了讓相同的物件重疊的時候有黑邊可以區隔
+                        # color_mask_cv2[:, :, :] = color_mask_cv2[:, :, :] * (1 - diff) + blank_image * diff
+                        # color_mask = Image.fromarray(color_mask_cv2)
+                        ## ---------------------------------------
+                        # ## ------------ another way to make mask border
+                        # ## 找出mask的邊界
+                        # Contours, _ = cv2.findContours(erosion, cv2.RETR_EXTERNAL,
+                        #                                cv2.CHAIN_APPROX_TC89_KCOS)
+                        # for cnt in Contours:
+                        #     hull = cv2.convexHull(cnt)
+                        #     cv2.drawContours(color_mask_cv2, [hull], -1, color=(0, 0, 0), thickness=4, )
+                        ## ---------------------------------------
+                        # ------------------- using opencv not pil to paste the mask ---------------------
+                        color_mask_np = np.array(color_mask)
+                        mask_np = np.array(mask) * 1  # single channel mask
+                        mask_np = np.stack((mask_np, mask_np, mask_np), axis=2)  # RGB mask
+                        mask_img_np[pos_y:pos_y + h, pos_x:pos_x + w, :] = \
+                            mask_img_np[pos_y:pos_y + h, pos_x:pos_x + w, :] * (np.ones_like(mask_np) - mask_np) + \
+                            color_mask_np * mask_np
+                        # mask_img = Image.fromarray(mask_img_np)
+                        # plt.imshow(mask_img)
+                        # plt.show()
+                        # ----------------------------------------
+                        # mask_img.paste(color_mask, box=(pos_x, pos_y), mask=mask)
+                        # ----------------------------------------
+                        instance_id += 1
+                    ann_idx += 1
+        # -------------------------------
+        ## save image (mask) and json file
+        # -------------------------------
+        json_color[image_id] = {
+            'color_dict': color_cat_dict,
+            'color_annId_dict': color_annId_dict
+        }
+        image_name = '{}.jpg'.format(image_id)
+        mask_name = '{}.png'.format(image_id)  # mask use png format, jpg would change pixel value after saving
+        bg_img.save(os.path.join(output_dir, image_name))
+        if save_mask:
+            # mask_img = Image.fromarray(mask_img_np)
+            # print('mask contain :{} values'.format(np.unique(mask_img_np)))
+            cv2.imwrite(os.path.join(mask_dir, mask_name), mask_img_np)
+            # mask_img.save(os.path.join(mask_dir, image_name))
+            # plt.imshow(mask_img)
             # plt.show()
-
-            # ---------------------------
-            # Find center of mass
-            # ---------------------------
-            mask_array = np.array(mask)
-            center_of_mass = ndimage.measurements.center_of_mass(mask_array)  # y, x
-            center_of_mass = [int(round(x)) for x in center_of_mass]
-            center_of_mass = center_of_mass[1] + pos_x, center_of_mass[0] + pos_y  # map to whole image
-            with lock:
-                json_ann.append({
-                    'bbox': (pos_x, pos_y, w, h),
-                    'category_id': category,
-                    'center_of_mass': center_of_mass,
-                    'area': area,
-                    'image_id': int(img_id_num),
-                    'iscrowd': 0,
-                    'id': ann_idx
-                })
-                obj_in_this_pic.append({
-                    'bbox': (pos_x, pos_y, w, h),
-                    'category_id': category,
-                    'center_of_mass': center_of_mass,
-                    'area': area,
-                    'image_id': int(img_id_num),
-                    'iscrowd': 0,
-                    'id': ann_idx
-                })
-                if save_mask:
-                    color_mask = Image.new('RGB', mask.size,
-                                           tuple(INSTANCE_COLOR[instance_id].tolist()))  # 挑到mask畫面上的物件mask
-                    color_tuple_list = INSTANCE_COLOR[instance_id].tolist()
-                    color_tuple_list.reverse()
-                    color_cat_dict[str(tuple(color_tuple_list))] = category
-                    color_annId_dict[str(tuple(color_tuple_list))] = ann_idx
-
-                    # ----------------- # using erode to create border for different mask ----------------------
-                    # color_mask_cv2 = np.asarray(color_mask)
-                    # mask_cv2 = np.asarray(mask)
-                    # kernel = np.ones((3, 3), np.uint8)
-                    # erosion = cv2.erode(mask_cv2, kernel, iterations=3)
-                    # diff = cv2.absdiff(mask_cv2, erosion) / 255  # use as mask for black border paint on color mask
-                    # diff = np.stack((diff, diff, diff), axis=2)  # make it to 3-channel
-                    # blank_image = np.zeros((mask.size[1], mask.size[0], 3), np.uint8)
-                    # # 為了讓相同的物件重疊的時候有黑邊可以區隔
-                    # color_mask_cv2[:, :, :] = color_mask_cv2[:, :, :] * (1 - diff) + blank_image * diff
-                    # color_mask = Image.fromarray(color_mask_cv2)
-                    ## ---------------------------------------
-                    # ## ------------ another way to make mask border
-                    # ## 找出mask的邊界
-                    # Contours, _ = cv2.findContours(erosion, cv2.RETR_EXTERNAL,
-                    #                                cv2.CHAIN_APPROX_TC89_KCOS)
-                    # for cnt in Contours:
-                    #     hull = cv2.convexHull(cnt)
-                    #     cv2.drawContours(color_mask_cv2, [hull], -1, color=(0, 0, 0), thickness=4, )
-                    ## ---------------------------------------
-                    # ------------------- using opencv not pil to paste the mask ---------------------
-                    color_mask_np = np.array(color_mask)
-                    mask_np = np.array(mask) * 1  # single channel mask
-                    mask_np = np.stack((mask_np, mask_np, mask_np), axis=2)  # RGB mask
-                    mask_img_np[pos_y:pos_y + h, pos_x:pos_x + w, :] = \
-                        mask_img_np[pos_y:pos_y + h, pos_x:pos_x + w, :] * (np.ones_like(mask_np) - mask_np) + \
-                        color_mask_np * mask_np
-                    # mask_img = Image.fromarray(mask_img_np)
-                    # plt.imshow(mask_img)
-                    # plt.show()
-                    # ----------------------------------------
-                    # mask_img.paste(color_mask, box=(pos_x, pos_y), mask=mask)
-                    # ----------------------------------------
-                    instance_id += 1
-                ann_idx += 1
-    # -------------------------------
-    ## save image (mask) and json file
-    # -------------------------------
-    json_color[image_id] = {
-        'color_dict': color_cat_dict,
-        'color_annId_dict': color_annId_dict
-    }
-    image_name = '{}.jpg'.format(image_id)
-    mask_name = '{}.png'.format(image_id)  # mask use png format, jpg would change pixel value after saving
-    bg_img.save(os.path.join(output_dir, image_name))
-    if save_mask:
-        # mask_img = Image.fromarray(mask_img_np)
-        # print('mask contain :{} values'.format(np.unique(mask_img_np)))
-        cv2.imwrite(os.path.join(mask_dir, mask_name), mask_img_np)
-        # mask_img.save(os.path.join(mask_dir, image_name))
-        # plt.imshow(mask_img)
-        # plt.show()
-        # time.sleep(100)
-    json_img.append({
-        'file_name': image_name,
-        'id': int(img_id_num),
-        'width': 1815,
-        'height': 1815,
-    })
+            # time.sleep(100)
+        json_img.append({
+            'file_name': image_name,
+            'id': int(img_id_num),
+            'width': 1815,
+            'height': 1815,
+            'level':level_dict[os.path.basename(image_name).split('.')[0]]
+        })
+    except:
+        traceback.print_exc()
 
 
 if __name__ == '__main__':
     parser = ArgumentParser(description="Synthesize fake images")
-    parser.add_argument('--gen_num', type=int, default=15000,
+    parser.add_argument('--gen_num', type=int, default=30,
                         help='how many number of images need to create.')
-    parser.add_argument('--suffix', type=str, default='mix',
+    parser.add_argument('--suffix', type=str, default='test',
                         help='suffix for image folder and json file')
-    parser.add_argument('--thread', type=int, default=10,
+    parser.add_argument('--thread', type=int, default=1,
                         help='using how many thread to create')
     parser.add_argument('--count', type=int, default=1)  ## original=32
     parser.add_argument('--local_rank', type=int, default=0)
@@ -452,22 +478,29 @@ if __name__ == '__main__':
         'medium_mode': 0,
         'hard_mode': 0
     }
+    int_2_diff={
+        1:'easy',
+        2: 'medium',
+        3: 'hard'
+    }
+    level_dict = {}
     strategics = []
     for image_id in tqdm(range(GENERATED_NUM)):
-        num_per_category = buy_strategic(counter)
+        num_per_category, difficulty = buy_strategic(counter)
+        level_dict['synthesized_image_{}'.format(image_id)] = int_2_diff[difficulty]
         strategics.append(('synthesized_image_{}'.format(image_id), num_per_category))
-    strategics_name = 'strategics_train.json'
-    if os.path.exists(strategics_name):
-        os.remove(strategics_name)
-    with open(strategics_name, 'w') as f:
-        json.dump(strategics, f)
-    print(counter)  # {'easy_mode': 25078, 'medium_mode': 37287, 'hard_mode': 37635}
+    # strategics_name = 'strategics_train.json'
+    # if os.path.exists(strategics_name):
+    #     os.remove(strategics_name)
+    # with open(strategics_name, 'w') as f:
+    #     json.dump(strategics, f)
+    # print(counter)  # {'easy_mode': 25078, 'medium_mode': 37287, 'hard_mode': 37635}
     # quit()
     ###########################################################################################
     ###########################################################################################
-    with open(strategics_name) as f:
-        strategics = json.load(f)
-    strategics = sorted(strategics, key=lambda s: s[0])
+    # with open(strategics_name) as f:
+    #     strategics = json.load(f)
+    # strategics = sorted(strategics, key=lambda s: s[0])
     version = str(GENERATED_NUM)
 
     output_dir = os.path.join('synthesize_{}_{}'.format(version, args.suffix))
@@ -495,13 +528,13 @@ if __name__ == '__main__':
 
     with open('ratio_annotations.json') as fid:
         ratio_annotations = json.load(fid)
-
+    with open('ratio_annotations_all.json') as fid:
+        ratio_annotations_all = json.load(fid)
     with open(train_json) as fid:
         data = json.load(fid)
     images = {}
     for x in data['images']:
         images[x['id']] = x
-
     annotations = {}
     for x in data['annotations']:
         annotations[images[x['image_id']]['file_name']] = x
@@ -515,6 +548,9 @@ if __name__ == '__main__':
         cat_2_angle = json.load(fid)
     with open('product_code.json') as fid:
         product_code = json.load(fid)
+    class_2_product_code = {}
+    for k, v in product_code.items():
+        class_2_product_code["{}_{}".format(v['cat_id'], v['sku_class'])] = k
     rotate_angles = [str(x) for x in range(1, 40, 3)]
     for code, value in product_code.items():
         angles = cat_2_angle[value['sku_class']]
@@ -528,12 +564,24 @@ if __name__ == '__main__':
             angles = [0, 2]
         elif value['cat_id'] in [198, 200]:  # cylinder-like
             angles = [0]
-        for ca in angles:
-            for ra in rotate_angles:
+        for ca in angles:  # camera angle
+            for ra in rotate_angles:  # rotate angle
                 object_paths += glob.glob(os.path.join(train_imgs_dir, '{}_camera{}-{}.jpg'.format(code, ca, ra)))
                 object_paths += glob.glob(
                     os.path.join(train_imgs_dir, '{}-back_camera{}-{}.jpg'.format(code, ca, ra)))  # 有背面的商品
-
+    tissue_remove_paths = []
+    tissue_nos = [i for i in range(174, 194)]
+    tissue_remove_rotate_angles = [i for i in range(3, 17)] + [i for i in range(22, 38)]
+    for tissue_no in tissue_nos:
+        code = class_2_product_code["{}_tissue".format(tissue_no)]
+        angles = [0, 1, 2, 3]
+        for ca in angles:  # camera angle
+            for ra in tissue_remove_rotate_angles:
+                tissue_remove_paths += glob.glob(
+                    os.path.join(train_imgs_dir, '{}_camera{}-{}.jpg'.format(code, ca, ra)))
+                tissue_remove_paths += glob.glob(
+                    os.path.join(train_imgs_dir, '{}-back_camera{}-{}.jpg'.format(code, ca, ra)))
+    object_paths = list(set(object_paths).difference(set(tissue_remove_paths)))
     # ---------------------------
     # items dict: Key: item_ID, value: item_images(list)
     # ---------------------------
@@ -548,7 +596,7 @@ if __name__ == '__main__':
     # bg_height, bg_width = bg_img_cv.shape[:2]
     # mask_img_cv = np.zeros((bg_height, bg_width), dtype=np.uint8)
 
-    with open('item_size.json') as fid:
+    with open('item_size_all.json') as fid:
         item_size = json.load(fid)
     json_color = {}  # store each image mask color to category
     json_ann = []
@@ -557,14 +605,42 @@ if __name__ == '__main__':
     finished_img = 0
     m = multiprocessing.Manager()
     lock = m.Lock()
-    with ThreadPoolExecutor(max_workers=args.thread) as executor:
-        futures = []
-        for image_id, num_per_category in strategics:
-            future = executor.submit(create_image, image_id, num_per_category, lock=lock)
-            futures.append(future)
-        for future in as_completed(futures):
-            finished_img += 1
-            print("done {} image".format(finished_img))
+    image_left = args.gen_num
+    image_cnt = 1
+    MAX_JOBS_IN_QUEUE = 5
+    strategics_iter = iter(strategics)
+    # print(strategics)
+    jobs = {}
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        while image_left > 0:
+            for image_id, num_per_category in strategics_iter:
+                # image_id = next(iter(strat.keys()))
+                # num_per_category = next(iter(strat.values()))
+                # print('image_id :'.format(image_id))
+                job = executor.submit(create_image, image_id, num_per_category, lock=lock)
+                jobs[job] = image_id
+                if len(jobs) > MAX_JOBS_IN_QUEUE:
+                    break  # limit the job submission for now job
+            for job in as_completed(jobs):
+                image_cnt_res = jobs[job]
+                print("{} created".format(image_cnt_res))
+                del jobs[job]
+                image_left -= 1
+                break
+        print('all images created.')
+        # for job in as_completed(jobs):
+        #     # image_cnt_res = jobs[job]
+        #     # print("done {} image".format(image_cnt_res))
+        #     del jobs[job]
+
+    # with BoundedThreadPoolExecutor(max_workers=args.thread) as executor:
+    #     futures = []
+    #     for image_id, num_per_category in strategics:
+    #         future = executor.submit(create_image, image_id, num_per_category, lock=lock)
+    #         futures.append(future)
+    #     for future in as_completed(futures):
+    #         finished_img += 1
+    #         print("done {} image".format(finished_img))
 
     json_cat = list()
     for idx, val in enumerate(CATEGORIES):
