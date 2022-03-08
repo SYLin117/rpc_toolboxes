@@ -7,7 +7,7 @@ from tqdm import tqdm
 import numpy as np
 import sys
 from pathlib import Path
-from .config import Config
+from config import Config
 
 """
 為測試資料集的影像加上標籤(bbox)(在畫面中)
@@ -150,7 +150,7 @@ if __name__ == "__main__":
     DATASET_DIR = cfg.get_dataset_root()
     args = make_parser().parse_args()
     if args.use_default:
-        args.img_path = os.path.join(sys.path[0], 'synthesize_100')
-        args.json_path = os.path.join(sys.path[0], 'sod_synthesize_100_0.json')
-        args.save_path = os.path.join(sys.path[0], 'synthesize_100_labeled')
+        args.img_path = os.path.join(DATASET_DIR, 'retail_product_checkout', 'smallval2019')
+        args.json_path = os.path.join(DATASET_DIR, 'retail_product_checkout', 'instances_smallval2019.json')
+        args.save_path = os.path.join(DATASET_DIR, 'retail_product_checkout', 'smallval2019_labeled')
     main(args)
