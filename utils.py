@@ -522,6 +522,11 @@ def visualize_bbox(json_path, img_path, save_path, COLORS: np.ndarray, CLASSES: 
 
 
 def check_ratio(json_path):
+    """
+    檢查個圖片的ratio
+    :param json_path:
+    :return:
+    """
     with open(json_path) as fid:
         ratio_dict = json.load(fid)
     for k, v in ratio_dict.items():
@@ -533,6 +538,21 @@ def check_ratio(json_path):
     sns.histplot(df, binwidth=.02)
     # plt.bar(list(dictionary.keys()), dictionary.values(), color='g')
     plt.show()
+
+
+def extract_val_ann(json_path, image_root, save_root, mask_save_root):
+    """
+    將
+    :param json_path:
+    :param image_root:
+    :return:
+    """
+    with open(json_path) as fid:
+        val_data = json.load(fid)
+    val_coco = COCO(annotation_file=json_path)
+    annotations = val_data['annotations']
+
+
 
 
 if __name__ == "__main__":
@@ -584,8 +604,10 @@ if __name__ == "__main__":
     # mask_np = cv2.imread(mask, cv2.IMREAD_COLOR)
     # print(np.unique(mask_np))
     ## ----------------------------------------
-    check_coco_seg_format('/media/ian/WD/datasets/rpc_list/synthesize_15000_best_small_seg.json')
+    # check_coco_seg_format('/media/ian/WD/datasets/rpc_list/synthesize_15000_best_small_seg.json')
     ## ----------------------------------------
     # check_ratio('./ratio_annotations_all.json')
     ## ----------------------------------------
     # get_sizeof_product()
+    ## ----------------------------------------
+    extract_val_ann('D:\\datasets\\retail_product_checkout\\synthesizes_val2019.json')
