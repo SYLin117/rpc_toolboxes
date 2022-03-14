@@ -7,7 +7,9 @@ import matplotlib.pyplot as plt
 import glob
 import os
 from tqdm import tqdm
-from utils import check_coco_seg_format
+import multiprocessing
+from threading import Lock
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 
 """
 create annotation for rpc dataset 
@@ -45,10 +47,22 @@ def create_sub_masks(mask_image):
     return sub_masks
 
 
-def create_sub_mask_annotation(sub_mask: np.ndarray, image_id, category_id, annotation_id, is_crowd):
+def create_sub_mask_annotation(sub_mask: np.ndarray, image_id, category_id, annotation_id, is_crowd, lock: Lock):
+    """
     # Find contours (boundary lines) around each sub-mask
     # Note: there could be multiple contours if the object
     # is partially occluded. (E.g. an elephant behind a tree)
+    Args:
+        sub_mask:np.ndarray
+        image_id:
+        category_id:
+        annotation_id:
+        is_crowd:
+
+    Returns:
+
+    """
+
     contours = measure.find_contours(sub_mask, 0.5, positive_orientation='low')
 
     segmentations = []
@@ -63,11 +77,6 @@ def create_sub_mask_annotation(sub_mask: np.ndarray, image_id, category_id, anno
         # Make a polygon and simplify it
         poly = Polygon(contour)
         poly = poly.simplify(1.0, preserve_topology=False)
-        # origin
-        # polygons.append(poly)
-        # segmentation = np.array(poly.exterior.coords).ravel().tolist()
-        # segmentations.append(segmentation)
-        # because encounter multipoly
         if type(poly) is Polygon:
             polygons.append(poly)
             segmentation = np.array(poly.exterior.coords).ravel().tolist()
@@ -109,10 +118,9 @@ if __name__ == "__main__":
     # bottle_book_mask_image = Image.open('./example_images/bottle_book_mask.png').convert('RGB')
     #
     # mask_images = [plant_book_mask_image, bottle_book_mask_image]
-    name = 'synthesize_15000_test'
-    folder = 'rpc_list'
-    mask_path = '/media/ian/WD/datasets/{}/{}_mask_small'.format(folder, name)
-    json_path = '/media/ian/WD/datasets/{}/{}_small.json'.format(folder, name)
+    name = 'synthesize_30000_mix'
+    mask_path = '/media/ian/WD/datasets/rpc_tmp/{}_mask_small'.format(name)
+    json_path = '/media/ian/WD/datasets/rpc_tmp/{}_small.json'.format(name)
     mask_images = glob.glob(os.path.join(mask_path, "*.png"))
     with open(json_path) as fid:
         json_data = json.load(fid)
@@ -143,35 +151,67 @@ if __name__ == "__main__":
 
     # Create the annotations
     annotations = []
-    for mask_image in tqdm(mask_images):
-        filename = os.path.basename(mask_image)
-        mask_image = Image.open(mask_image).convert('RGB')
-        sub_masks = create_sub_masks(mask_image)
-        image_id = filename_2_imgId[filename.split('.')[0]]
-        category_ids = color_infos[filename.split('.')[0]]['color_dict']
-        # for color, sub_mask in sub_masks.items():
-        for color, cat in category_ids.items():
-            try:
-                sub_mask = sub_masks[color]
-                # category_id = category_ids[image_id][color]
-                ## show sub_mask
-                # plt.imshow(sub_mask)
-                # plt.show()
-                sub_mask_np = np.array(sub_mask)
-                annotation = create_sub_mask_annotation(sub_mask=sub_mask_np,
-                                                        image_id=image_id,
-                                                        category_id=cat,
-                                                        annotation_id=annotation_id,
-                                                        is_crowd=is_crowd)
-                annotations.append(annotation)
-                annotation_id += 1
-            except KeyError as ke:
-                print("filename: {}".format(filename))
-                print("sub_mask got: {}".format(sub_masks))
-                print("got KeyError with color: {}".format(color))
+    ann_left = len(anns)
+    mask_images_iter = iter(mask_images)
+    pbar = tqdm(total=len(anns))
+    # ======== multi-thread config ============= #
+    m = multiprocessing.Manager()
+    lock = m.Lock()
+    jobs = {}
+    MAX_JOBS_IN_QUEUE = 20
+    # ========================================== #
+    with ProcessPoolExecutor() as executor:
+        while ann_left > 0:
+            mask_image = next(mask_images_iter)
+            filename = os.path.basename(mask_image)
+            mask_image = Image.open(mask_image).convert('RGB')
+            sub_masks = create_sub_masks(mask_image)
+            image_id = filename_2_imgId[filename.split('.')[0]]
+            category_ids = color_infos[filename.split('.')[0]]['color_dict']
+            category_ids_iter = iter(category_ids.items())
+            color_left = len(category_ids.keys())
+            while color_left > 0:
+                for color, cat in category_ids_iter:
+                    try:
+                        sub_mask = sub_masks[color]
+                        # category_id = category_ids[image_id][color]
+                        ## show sub_mask
+                        # plt.imshow(sub_mask)
+                        # plt.show()
+                        sub_mask_np = np.array(sub_mask)
+                        # annotation = create_sub_mask_annotation(sub_mask=sub_mask_np,
+                        #                                         image_id=image_id,
+                        #                                         category_id=cat,
+                        #                                         annotation_id=annotation_id,
+                        #                                         is_crowd=is_crowd)
+                        job = executor.submit(create_sub_mask_annotation, sub_mask_np, image_id, cat, annotation_id,
+                                              is_crowd, lock=lock)
+                        jobs[job] = annotation_id
+                        annotation_id += 1
+                        if len(jobs) > MAX_JOBS_IN_QUEUE:
+                            break  # limit the job submission for now job
+                        # annotations.append(annotation)
+
+                    except KeyError as ke:
+                        print("filename: {}".format(filename))
+                        print("sub_mask got: {}".format(sub_masks))
+                        print("got KeyError with color: {}".format(color))
+                        color_left -= 1
+                        ann_left -= 1
+                        break
+                for job in as_completed(jobs):
+                    # ann_cnt_res = jobs[job]
+                    # print("ann: {} created".format(ann_cnt_res))
+                    annotation = job.result()
+                    annotations.append(annotation)
+                    del jobs[job]
+                    ann_left -= 1
+                    color_left -= 1
+                    pbar.update(1)
+                    break
+    pbar.close()
     json_data['annotations'] = annotations
     del json_data['color']
-    with open('/media/ian/WD/datasets/{}/{}_small_seg.json'.format(folder, name), 'w', encoding='utf-8') as f:
+    with open('/media/ian/WD/datasets/rpc_tmp/{}_small_seg.json'.format(name), 'w', encoding='utf-8') as f:
         json.dump(json_data, f, ensure_ascii=False, indent=4)
-    check_coco_seg_format('/media/ian/WD/datasets/{}/{}_small_seg.json'.format(folder, name))
-    # print(json.dumps(annotations))
+# print(json.dumps(annotations))

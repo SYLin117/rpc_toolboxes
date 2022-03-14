@@ -1,3 +1,6 @@
+# ===========================
+# use to calculate each object(single train image) pixel ratio to the biggest one(include others)
+# ===========================
 import glob
 import json
 import os

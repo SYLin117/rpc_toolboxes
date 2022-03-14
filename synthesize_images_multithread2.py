@@ -1,3 +1,6 @@
+# ==========================
+# 使用multithread製作偽造影像
+# ==========================
 import glob
 import json
 import os
@@ -22,10 +25,13 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_compl
 from bounded_pool_executor import BoundedThreadPoolExecutor
 import gc
 import traceback
+from scipy.stats import truncnorm
+import math
 
-"""
-使用multithread製作偽造影像
-"""
+def get_truncated_normal(mean=0.25, sd=0.05, low=0.0, upp=5.0):
+    return truncnorm(
+        (low - mean) / sd, (upp - mean) / sd, loc=mean, scale=sd)
+
 
 CATEGORIES = ['__background__', '1_puffed_food', '2_puffed_food', '3_puffed_food', '4_puffed_food', '5_puffed_food',
               '6_puffed_food', '7_puffed_food',
@@ -81,56 +87,44 @@ CAT_COLORS[0, :] = [0, 0, 0]
 
 
 def buy_strategic(counter):
-    # categories = [i + 1 for i in range(NUM_CATEGORIES)]
-    # selected_categories = np.random.choice(categories, size=random.randint(3, 10), replace=False)
-    # num_categories = len(selected_categories)
-    # if 3 <= num_categories < 5:  # Easy mode: 3∼5
-    #     num_instances = random.randint(num_categories, 10)
-    #     counter['easy_mode'] += 1
-    # elif 5 <= num_categories < 8:  # Medium mode: 5∼8
-    #     num_instances = random.randint(10, 15)
-    #     counter['medium_mode'] += 1
-    # else:  # Hard mode: 8∼10
-    #     num_instances = random.randint(15, 20)
-    #     counter['hard_mode'] += 1
-    # num_per_category = {}
-    # generated = 0
+    """
+
+    Args:
+        counter:
+
+    Returns:num_per_category, difficulty
+
+    """
+    global NUM_CATEGORIES
+    categories = [i + 1 for i in range(NUM_CATEGORIES)]
+    difficulty = random.randint(1, 3)
+    if difficulty == 1:
+        num_categories = random.randint(3, 5)
+        num_instances = random.randint(num_categories, 5)
+        counter['easy_mode'] += 1
+    elif difficulty == 2:
+        num_categories = random.randint(5, 8)
+        num_instances = random.randint(num_categories, 8)
+        counter['medium_mode'] += 1
+    elif difficulty == 3:
+        num_categories = random.randint(8, 10)
+        num_instances = random.randint(num_categories, 10)
+        counter['hard_mode'] += 1
+    num_per_category = {}
+    generated = 0
+    selected_categories = np.random.choice(categories, size=num_categories, replace=False)
+    # ================= original rule ==========================
     # for i, category in enumerate(selected_categories):
     #     i += 1
     #     if i == num_categories:
     #         count = num_instances - generated
     #     else:
     #         count = random.randint(1, num_instances - (num_categories - i) - generated)
+    #
     #     generated += count
     #     num_per_category[int(category)] = count
-    # return num_per_category
-    # ------------------------------------------
-    global NUM_CATEGORIES
-    categories = [i + 1 for i in range(NUM_CATEGORIES)]
-    difficulty = random.randint(1, 3)
-    if difficulty == 1:
-        num_categories = random.randint(3, 5)
-        num_instances = random.randint(num_categories, 10)
-        counter['easy_mode'] += 1
-    elif difficulty == 2:
-        num_categories = random.randint(5, 8)
-        num_instances = random.randint(num_categories, 15)
-        counter['medium_mode'] += 1
-    elif difficulty == 3:
-        num_categories = random.randint(8, 10)
-        num_instances = random.randint(num_categories, 20)
-        counter['hard_mode'] += 1
-    num_per_category = {}
-    generated = 0
-    selected_categories = np.random.choice(categories, size=num_categories, replace=False)
-    for i, category in enumerate(selected_categories):
-        i += 1
-        if i == num_categories:
-            count = num_instances - generated
-        else:
-            count = random.randint(1, num_instances - (num_categories - i) - generated)
-
-        generated += count
+    for category in selected_categories:
+        count = random.randint(1, 3)
         num_per_category[int(category)] = count
     return num_per_category, difficulty
 
@@ -199,6 +193,10 @@ def sample_select_object_index(category, paths, ratio_annotations, threshold=0.5
 def generated_position(width, height, w, h, pad=0):
     x = random.randint(pad, width - w - pad)
     y = random.randint(pad, height - h - pad)
+    while x + w > width:
+        x = random.randint(pad, width - w - pad)
+    while y + h > height:
+        y = random.randint(pad, height - h - pad)
     return x, y
 
 
@@ -243,7 +241,7 @@ def gaussian_filter_density(gt):
     return density
 
 
-def create_image(image_id, num_per_category, lock: Lock):
+def create_image(image_id, num_per_category, change_background: bool, lock: Lock):
     try:
         global level_dict, ann_idx, json_ann, json_img, json_color  # ann_idx: for create new annotation id, json_ann: new annotation list, json_img: new image list
         instance_num = 0
@@ -255,6 +253,8 @@ def create_image(image_id, num_per_category, lock: Lock):
         color_annId_dict = {}
         # ----------------- get background image --------------------
         background_id = random.randint(1, 3)
+        if not change_background:
+            background_id = 1
         bg_img_cv = cv2.imread('bg{}.jpg'.format(background_id), cv2.IMREAD_COLOR)
         bg_img_cv = cv2.cvtColor(bg_img_cv, cv2.COLOR_BGR2RGB)
         bg_height, bg_width = bg_img_cv.shape[:2]
@@ -290,33 +290,33 @@ def create_image(image_id, num_per_category, lock: Lock):
                 # ---------------------------
                 # Random scale
                 # ---------------------------
-                scale = 1
-                # ratio = ratio_annotations_all["{}.png".format(os.path.basename(object_path).split('.')[0])]
-                # base_ratio = 25
-                # if ratio >= .2:
-                #     scale = random.uniform(.2, .4)
-                # elif ratio >= .1:
-                #     scale = random.uniform(.2, .45)
-                # elif ratio >= .05:
-                #     scale = random.uniform(.2, .5)
-                # else:
-                #     scale = random.uniform(.2, .55)
-                ## TODO
-                if item_size[str(category)] == 'super_large':
-                    scale = random.uniform(0.3, 0.55)
-                elif item_size[str(category)] == 'extra_large':
-                    scale = random.uniform(0.3, 0.55)
-                elif item_size[str(category)] == 'large':
-                    scale = random.uniform(0.33, 0.6)
-                elif item_size[str(category)] == 'medium':
-                    scale = random.uniform(0.36, 0.6)
-                elif item_size[str(category)] == 'small':
-                    scale = random.uniform(.4, 0.6)
-                elif item_size[str(category)] == 'little':
-                    scale = random.uniform(.4, 0.7)
-                elif item_size[str(category)] == 'tiny':
-                    scale = random.uniform(.5, .7)
-
+                # scale = 1
+                # if item_size[str(category)] == 'super_large':
+                #     scale = random.uniform(0.3, 0.6)
+                # elif item_size[str(category)] == 'extra_large':
+                #     scale = random.uniform(0.3, 0.6)
+                # elif item_size[str(category)] == 'large':
+                #     scale = random.uniform(0.3, 0.6)
+                # elif item_size[str(category)] == 'medium':
+                #     scale = random.uniform(0.3, 0.6)
+                # elif item_size[str(category)] == 'small':
+                #     scale = random.uniform(.35, 0.65)
+                # elif item_size[str(category)] == 'little':
+                #     scale = random.uniform(.35, 0.65)
+                # elif item_size[str(category)] == 'tiny':
+                #     scale = random.uniform(.35, .7)
+                # ===============================================================================
+                # scale_mean = train_val_ratio[str(category)]
+                # scale = get_truncated_normal(mean=scale_mean, sd=0.05, low=.0, upp=2.0).rvs()
+                # while scale <= 0:
+                #     scale = get_truncated_normal(mean=scale_mean-.1, sd=0.05, low=.0, upp=2.0).rvs()
+                # ===============================================================================
+                scale_mean = train_val_ratio[str(category)]
+                scale_mean = math.sqrt(scale_mean)
+                # scale = random.uniform(scale_mean-0.2, scale_mean + 0.2)
+                scale = get_truncated_normal(mean=scale_mean, sd=0.025, low=.0, upp=2.0).rvs()
+                while scale <= 0:
+                    scale = get_truncated_normal(mean=scale_mean, sd=0.025, low=.0, upp=2.0).rvs()
                 w, h = int(w * scale), int(h * scale)
                 obj = obj.resize((w, h), resample=Image.BILINEAR)
                 mask = mask.resize((w, h), resample=Image.BILINEAR)
@@ -452,7 +452,7 @@ def create_image(image_id, num_per_category, lock: Lock):
             'id': int(img_id_num),
             'width': 1815,
             'height': 1815,
-            'level':level_dict[os.path.basename(image_name).split('.')[0]]
+            'level': level_dict[os.path.basename(image_name).split('.')[0]]
         })
     except:
         traceback.print_exc()
@@ -460,14 +460,17 @@ def create_image(image_id, num_per_category, lock: Lock):
 
 if __name__ == '__main__':
     parser = ArgumentParser(description="Synthesize fake images")
-    parser.add_argument('--gen_num', type=int, default=30,
+    parser.add_argument('--gen_num', type=int, default=15000,
                         help='how many number of images need to create.')
     parser.add_argument('--suffix', type=str, default='test',
                         help='suffix for image folder and json file')
-    parser.add_argument('--thread', type=int, default=1,
+    parser.add_argument('--thread', type=int, default=5,
                         help='using how many thread to create')
+    parser.add_argument('--chg_bg', type=bool, default=False,
+                        help='use multiple background or not.')
     parser.add_argument('--count', type=int, default=1)  ## original=32
     parser.add_argument('--local_rank', type=int, default=0)
+
     args = parser.parse_args()
     ###########################################################################################
     NUM_CATEGORIES = 200
@@ -478,8 +481,8 @@ if __name__ == '__main__':
         'medium_mode': 0,
         'hard_mode': 0
     }
-    int_2_diff={
-        1:'easy',
+    int_2_diff = {
+        1: 'easy',
         2: 'medium',
         3: 'hard'
     }
@@ -510,7 +513,7 @@ if __name__ == '__main__':
     # if not os.path.exists(os.path.join(output_dir, 'density_maps')):
     #     os.mkdir(os.path.join(output_dir, 'density_maps'))
 
-    mask_dir = os.path.join(output_dir, 'synthesize_{}_{}_mask'.format(version, args.suffix))
+    mask_dir = os.path.join('synthesize_{}_{}_mask'.format(version, args.suffix))
     os.makedirs(mask_dir, exist_ok=True)
 
     num_threads = args.count
@@ -530,6 +533,8 @@ if __name__ == '__main__':
         ratio_annotations = json.load(fid)
     with open('ratio_annotations_all.json') as fid:
         ratio_annotations_all = json.load(fid)
+    with open('train_val_ratio.json') as fid:
+        train_val_ratio = json.load(fid)
     with open(train_json) as fid:
         data = json.load(fid)
     images = {}
@@ -551,24 +556,32 @@ if __name__ == '__main__':
     class_2_product_code = {}
     for k, v in product_code.items():
         class_2_product_code["{}_{}".format(v['cat_id'], v['sku_class'])] = k
-    rotate_angles = [str(x) for x in range(1, 40, 3)]
+    rotate_angles = [str(x) for x in range(1, 40, 1)]
     for code, value in product_code.items():
+        # ========================================= custom angles
         angles = cat_2_angle[value['sku_class']]
         if value['cat_id'] in [160, 161, 162, 163]:  # 瓶裝的調味料(seasoner)(其他是包裝的)
             angles = [3]
         elif value['cat_id'] in [37, 39, 40, 41]:  # 包裝類的即溶飲料(instant-drink)(其他是罐裝的)
-            angles = [1]
+            angles = [1, 2]
         elif value['cat_id'] in [134, 135, 144]:  # canned candy(not package)
             angles = [0]
         elif value['cat_id'] in [45, 46, 47, 48, 49]:  # cup noodle
             angles = [0, 2]
         elif value['cat_id'] in [198, 200]:  # cylinder-like
-            angles = [0]
+            angles = [0] # horizontal
+        elif value['cat_id'] in [i for i in range(189, 194)]:  # small packet tissue
+            angles = [2] # top view
+        # =========================================
+        # angles = [0, 1, 2, 3]
+        # =========================================
         for ca in angles:  # camera angle
             for ra in rotate_angles:  # rotate angle
                 object_paths += glob.glob(os.path.join(train_imgs_dir, '{}_camera{}-{}.jpg'.format(code, ca, ra)))
                 object_paths += glob.glob(
                     os.path.join(train_imgs_dir, '{}-back_camera{}-{}.jpg'.format(code, ca, ra)))  # 有背面的商品
+    ## remove specific rotation angle of tissue(too much white)
+    # =========================================
     tissue_remove_paths = []
     tissue_nos = [i for i in range(174, 194)]
     tissue_remove_rotate_angles = [i for i in range(3, 17)] + [i for i in range(22, 38)]
@@ -582,6 +595,7 @@ if __name__ == '__main__':
                 tissue_remove_paths += glob.glob(
                     os.path.join(train_imgs_dir, '{}-back_camera{}-{}.jpg'.format(code, ca, ra)))
     object_paths = list(set(object_paths).difference(set(tissue_remove_paths)))
+    # =========================================
     # ---------------------------
     # items dict: Key: item_ID, value: item_images(list)
     # ---------------------------
@@ -607,17 +621,18 @@ if __name__ == '__main__':
     lock = m.Lock()
     image_left = args.gen_num
     image_cnt = 1
-    MAX_JOBS_IN_QUEUE = 5
+    MAX_JOBS_IN_QUEUE = 8
     strategics_iter = iter(strategics)
     # print(strategics)
     jobs = {}
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor() as executor:
         while image_left > 0:
             for image_id, num_per_category in strategics_iter:
                 # image_id = next(iter(strat.keys()))
                 # num_per_category = next(iter(strat.values()))
                 # print('image_id :'.format(image_id))
-                job = executor.submit(create_image, image_id, num_per_category, lock=lock)
+                job = executor.submit(create_image, image_id, num_per_category, args.chg_bg,
+                                      lock=lock)
                 jobs[job] = image_id
                 if len(jobs) > MAX_JOBS_IN_QUEUE:
                     break  # limit the job submission for now job

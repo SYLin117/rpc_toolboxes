@@ -1,6 +1,7 @@
 import json
 import glob
 import os
+import sys
 
 import pandas as pd
 
@@ -19,6 +20,12 @@ import time
 import skimage
 from typing import Optional
 import seaborn as sns
+
+import torch
+import torchvision.transforms as T
+import tracer
+
+from PIL import Image
 
 RPC_CLASSES = (
     '1_puffed_food', '2_puffed_food', '3_puffed_food', '4_puffed_food', '5_puffed_food',
@@ -363,6 +370,8 @@ def rescale_coco_data(image_folder: str, mask_folder: Optional[str],
                       target_mask_folder: Optional[str], target_json_file: str):
     """
     rescale images, masks and bounding box in json file of coco style data
+    after small the dataset
+    could use rpc_mask_2_coco.py convert mask to seg datas
     Args:
         image_folder: path of images folder
         mask_folder:  path of masks folder
@@ -540,19 +549,163 @@ def check_ratio(json_path):
     plt.show()
 
 
-def extract_val_ann(json_path, image_root, save_root, mask_save_root):
+def add_area_2_bbox(json_path):
+    with open(json_path) as fid:
+        json_data = json.load(fid)
+    annotations = json_data['annotations']
+    for ann in annotations:
+        ann['area'] = round(ann['bbox'][2] * ann['bbox'][3])
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(json_data, f)
+
+
+def extract_val_ann(json_path, image_root=None, save_root=None, mask_save_root=None):
     """
     將
     :param json_path:
     :param image_root:
     :return:
     """
+    os.makedirs(save_root, exist_ok=True)
     with open(json_path) as fid:
         val_data = json.load(fid)
     val_coco = COCO(annotation_file=json_path)
     annotations = val_data['annotations']
+    img_dict = val_coco.imgs
+    img_with_ann_dict = val_coco.imgToAnns
+    for img_id, anns in img_with_ann_dict.items():
+        img_info = img_dict[img_id]
+        img_cv = cv2.imread(os.path.join(image_root, img_info['file_name']))
+        for ann in anns:
+            x, y, w, h = ann['bbox']
+            x = int(x)
+            y = int(y)
+            w = int(w)
+            h = int(h)
+
+            ann_area = img_cv[y:y + h, x:x + w]
+            if save_root:
+                cv2.imwrite(os.path.join(save_root, "{}.jpg".format(ann['id'])), ann_area)
 
 
+def create_syn_val(json_path, image_root=None, ann_root=None, mask_root=None, save_root=None, ):
+    """
+    create synthesis image of val2019
+    :param json_path:
+    :param image_root:
+    :return:
+    """
+    if save_root:
+        os.makedirs(save_root, exist_ok=True)
+    with open(json_path) as fid:
+        val_data = json.load(fid)
+    val_coco = COCO(annotation_file=json_path)
+    img_dict = val_coco.imgs
+    img_with_ann_dict = val_coco.imgToAnns
+    for img_id, anns in tqdm(img_with_ann_dict.items()):
+        img_info = img_dict[img_id]
+        img = Image.open(os.path.join(image_root, img_info['file_name']))
+        img_w, img_h = img.size
+        bg_img = Image.open(os.path.join(sys.path[0], 'bg1.jpg'))
+        bg_img = bg_img.resize((img_w, img_h))
+        for ann in anns:
+            x, y, w, h = ann['bbox']
+            x = int(x)
+            y = int(y)
+            w = int(w)
+            h = int(h)
+            ann_img = Image.open(os.path.join(ann_root, '{}.jpg'.format(ann['id'])))
+            mask = Image.open(os.path.join(mask_root, '{}.png'.format(ann['id']))).convert('1')
+            bg_img.paste(ann_img, box=(x, y), mask=mask)
+        # plt.imshow(bg_img)
+        # plt.title(img_info['file_name'])
+        # plt.show()
+        bg_img.save(os.path.join(save_root, img_info['file_name']))
+        # time.sleep(5)
+
+
+def extract_ann_mask(image_root, save_root, compare_root):
+    os.makedirs(save_root, exist_ok=True)
+    os.makedirs(compare_root, exist_ok=True)
+
+    def normPRED_np(d):
+        ma = np.max(d)
+        mi = np.min(d)
+
+        dn = (d - mi) / (ma - mi)
+        return dn
+
+    ## ========= setup model ================
+    tracer_cfg = tracer.getConfig()
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model_dir = './weights/tracer5_best.pth'
+    net = tracer.TRACER(tracer_cfg)
+    net.load_state_dict(torch.load(model_dir))
+    net = net.to(device)
+    net.eval()
+    tf = T.Compose([
+        T.ToPILImage(),
+        T.Resize([tracer_cfg.img_size, tracer_cfg.img_size]),
+        T.ToTensor(),
+        T.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225],
+        ),
+    ])
+    ## ======================================
+    paths = glob.glob(os.path.join(image_root, '*.jpg'))
+    for img_path in paths:
+        img_cv = cv2.imread(img_path)
+        h, w, _ = img_cv.shape
+        img_rgb = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)
+        img_tf = tf(img_rgb)
+        img_tf = img_tf.unsqueeze(0)
+        img_tf = torch.tensor(img_tf, device=device, dtype=torch.float32)
+        pred_tf, _, _ = net(img_tf)
+        ## ------------------------
+        pred_np = pred_tf.cpu().detach().numpy()
+        pred = pred_np[:, 0, :, :]
+        pred = normPRED_np(pred)
+        pred = pred.squeeze()
+        pred = pred * 255
+        pred.astype(np.uint8)
+        ret, thresh = cv2.threshold(pred, 125, 255, cv2.THRESH_BINARY)
+        thresh = np.array(thresh, np.uint8)
+        ## ------------------------
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        threshed = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=5)
+        thresh_stack = np.stack((threshed,) * 3, axis=-1)  # trans to 3 channel
+        thresh_stack = cv2.resize(thresh_stack, (w, h), interpolation=cv2.INTER_NEAREST)
+        filled = cv2.cvtColor(thresh_stack, cv2.COLOR_BGR2GRAY)
+        filled = filled / 255
+        ##--------------------------
+        save_mask = np.array(filled * 255, dtype=np.uint8)
+        masked_img = img_cv * filled[:, :, None]
+        compare_img = np.concatenate([img_cv, masked_img], axis=1)
+        ##--------------------------
+        filename = os.path.basename(img_path)
+        cv2.imwrite(os.path.join(save_root, '{}.png'.format(filename.split('.')[0])), save_mask)
+        cv2.imwrite(os.path.join(compare_root, '{}.jpg'.format(filename.split('.')[0])), compare_img)
+
+
+def copy_and_rename(image_root, save_root):
+    """
+    resave val2019 image and order by number
+    Args:
+        image_root:
+        save_root:
+
+    Returns: None
+
+    """
+    if save_root:
+        os.makedirs(save_root, exist_ok=True)
+    filenames = [f for f in os.listdir(image_root) if os.path.isfile(os.path.join(image_root, f))]
+    filenames.sort()
+    index = 1
+    for filename in filenames:
+        shutil.copyfile(os.path.join(image_root, filename), os.path.join(save_root, '{}.jpg'.format(index)))
+        index += 1
 
 
 if __name__ == "__main__":
@@ -572,26 +725,26 @@ if __name__ == "__main__":
     # check_ann_duplicate_id('/media/ian/WD/datasets/rpc_list/sod_synthesize_15000_0.json')
     ## ---------------------------------------
     ### resize coco dataset (include json file, masks and images)
-    # name = 'synthesize_15000_best'
+    # name = 'synthesize_15000_test'
     # image_folder = '/media/ian/WD/datasets/rpc_list/{}'.format(name)
     # mask_folder = '/media/ian/WD/datasets/rpc_list/{}_mask'.format(name)
     # json_file = '/media/ian/WD/datasets/rpc_list/{}.json'.format(name)
     # target_image_folder = '/media/ian/WD/datasets/rpc_list/{}_small'.format(name)
     # target_mask_folder = '/media/ian/WD/datasets/rpc_list/{}_mask_small'.format(name)
     # target_json_file = '/media/ian/WD/datasets/rpc_list/{}_small.json'.format(name)
-    # # image_folder = '/media/ian/WD/datasets/retail_product_checkout/val2019'
-    # # mask_folder = None
-    # # json_file = '/media/ian/WD/datasets/retail_product_checkout/annotations/instances_val2019.json'
-    # # target_image_folder = '/media/ian/WD/datasets/retail_product_checkout/smallval2019'
-    # # target_mask_folder = None
-    # # target_json_file = '/media/ian/WD/datasets/retail_product_checkout/annotations/instances_smallval2019.json'
-    # rescale_coco_data(image_folder=image_folder,
-    #                   mask_folder=mask_folder,
-    #                   json_file=json_file,
-    #                   target_size=750,
-    #                   target_image_folder=target_image_folder,
-    #                   target_mask_folder=target_mask_folder,
-    #                   target_json_file=target_json_file)
+    image_folder = '/media/ian/WD/datasets/retail_product_checkout/val2019'
+    mask_folder = None
+    json_file = '/media/ian/WD/datasets/retail_product_checkout/annotations/instances_val2019.json'
+    target_image_folder = '/media/ian/WD/datasets/retail_product_checkout/val2019_small'
+    target_mask_folder = None
+    target_json_file = '/media/ian/WD/datasets/retail_product_checkout/annotations/instances_val2019_small.json'
+    rescale_coco_data(image_folder=image_folder,
+                      mask_folder=mask_folder,
+                      json_file=json_file,
+                      target_size=512,
+                      target_image_folder=target_image_folder,
+                      target_mask_folder=target_mask_folder,
+                      target_json_file=target_json_file)
     ## --------------------------------------
     # json_path = f'/media/ian/WD/datasets/rpc_list/synthesize_15000_best.json'
     # img_path = f'/media/ian/WD/datasets/rpc_list/synthesize_15000_best'
@@ -604,10 +757,27 @@ if __name__ == "__main__":
     # mask_np = cv2.imread(mask, cv2.IMREAD_COLOR)
     # print(np.unique(mask_np))
     ## ----------------------------------------
-    # check_coco_seg_format('/media/ian/WD/datasets/rpc_list/synthesize_15000_best_small_seg.json')
+    # check_coco_seg_format('/media/ian/WD/datasets/rpc_list/synthesize_15000_test_small_seg.json')
     ## ----------------------------------------
     # check_ratio('./ratio_annotations_all.json')
     ## ----------------------------------------
     # get_sizeof_product()
     ## ----------------------------------------
-    extract_val_ann('D:\\datasets\\retail_product_checkout\\synthesizes_val2019.json')
+    # add_area_2_bbox('/media/ian/WD/datasets/retail_product_checkout/annotations/instances_smallval2019.json')
+    ## ----------------------------------------
+    # extract_val_ann('/media/ian/WD/datasets/retail_product_checkout/instances_val2019.json',
+    #                 '/media/ian/WD/datasets/retail_product_checkout/val2019',
+    #                 '/media/ian/WD/datasets/retail_product_checkout/val2019_anns')
+    ## ----------------------------------------
+    # extract_ann_mask(image_root='/media/ian/WD/datasets/retail_product_checkout/val2019_anns',
+    #                  save_root='/media/ian/WD/datasets/retail_product_checkout/val2019_anns_mask',
+    #                  compare_root='/media/ian/WD/datasets/retail_product_checkout/val2019_anns_compare')
+    ## ----------------------------------------
+    # create_syn_val(json_path='/media/ian/WD/datasets/retail_product_checkout/instances_val2019.json',
+    #                image_root='/media/ian/WD/datasets/retail_product_checkout/val2019',
+    #                ann_root='/media/ian/WD/datasets/retail_product_checkout/val2019_anns',
+    #                mask_root='/media/ian/WD/datasets/retail_product_checkout/val2019_anns_mask',
+    #                save_root='/media/ian/WD/datasets/retail_product_checkout/val2019_syn')
+    ## ----------------------------------------
+    # copy_and_rename(image_root='/media/ian/WD/datasets/retail_product_checkout/val2019',
+    #                 save_root='/media/ian/WD/datasets/rpc_transfer2/trainA')
