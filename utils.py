@@ -708,6 +708,22 @@ def copy_and_rename(image_root, save_root):
         index += 1
 
 
+def bbox_2_area(json_path):
+    with open(json_path) as fid:
+        data = json.load(fid)
+    # data_coco = COCO(annotation_file=json_path)
+    annotations = data['annotations']
+    new_anns = []
+    for ann in tqdm(annotations):
+        x, y, w, h = ann['bbox']
+        area = int(w) * int(h)
+        ann['area'] = area
+        new_anns.append(ann)
+    data['annotations'] = new_anns
+    with open(json_path, "w") as outfile:
+        json.dump(data, outfile, )
+
+
 if __name__ == "__main__":
     print("...main...")
     # find_items()
@@ -738,13 +754,13 @@ if __name__ == "__main__":
     target_image_folder = '/media/ian/WD/datasets/retail_product_checkout/val2019_small'
     target_mask_folder = None
     target_json_file = '/media/ian/WD/datasets/retail_product_checkout/annotations/instances_val2019_small.json'
-    rescale_coco_data(image_folder=image_folder,
-                      mask_folder=mask_folder,
-                      json_file=json_file,
-                      target_size=512,
-                      target_image_folder=target_image_folder,
-                      target_mask_folder=target_mask_folder,
-                      target_json_file=target_json_file)
+    # rescale_coco_data(image_folder=image_folder,
+    #                   mask_folder=mask_folder,
+    #                   json_file=json_file,
+    #                   target_size=512,
+    #                   target_image_folder=target_image_folder,
+    #                   target_mask_folder=target_mask_folder,
+    #                   target_json_file=target_json_file)
     ## --------------------------------------
     # json_path = f'/media/ian/WD/datasets/rpc_list/synthesize_15000_best.json'
     # img_path = f'/media/ian/WD/datasets/rpc_list/synthesize_15000_best'
@@ -781,3 +797,5 @@ if __name__ == "__main__":
     ## ----------------------------------------
     # copy_and_rename(image_root='/media/ian/WD/datasets/retail_product_checkout/val2019',
     #                 save_root='/media/ian/WD/datasets/rpc_transfer2/trainA')
+    ## ----------------------------------------
+    bbox_2_area(json_path='D:\\datasets\\retail_product_checkout\\instances_val2019_small.json')
