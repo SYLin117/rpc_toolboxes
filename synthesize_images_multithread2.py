@@ -28,7 +28,8 @@ import traceback
 from scipy.stats import truncnorm
 import math
 
-def get_truncated_normal(mean=0.25, sd=0.05, low=0.0, upp=5.0):
+
+def get_truncated_normal(mean=0.25, sd=0.05, low=0.0, upp=1.0):
     return truncnorm(
         (low - mean) / sd, (upp - mean) / sd, loc=mean, scale=sd)
 
@@ -313,10 +314,16 @@ def create_image(image_id, num_per_category, change_background: bool, lock: Lock
                 # ===============================================================================
                 scale_mean = train_val_ratio[str(category)]
                 scale_mean = math.sqrt(scale_mean)
-                # scale = random.uniform(scale_mean-0.2, scale_mean + 0.2)
-                scale = get_truncated_normal(mean=scale_mean, sd=0.025, low=.0, upp=2.0).rvs()
+                if category in ([i for i in range(71, 122)] + [i for i in range(160, 164)]):  # drink
+                    scale_mean -= 0.15
+                if category in ([i for i in range(136, 142)] + [i for i in range(145, 147)]):  # small gum
+                    scale_mean += 0.15
+                std = 0.01
+                low = scale_mean - 3 * std
+                up = scale_mean + 3 * std
+                scale = get_truncated_normal(mean=scale_mean, sd=std, low=low, upp=up).rvs()
                 while scale <= 0:
-                    scale = get_truncated_normal(mean=scale_mean, sd=0.025, low=.0, upp=2.0).rvs()
+                    scale = get_truncated_normal(mean=scale_mean, sd=std, low=low, upp=up).rvs()
                 w, h = int(w * scale), int(h * scale)
                 obj = obj.resize((w, h), resample=Image.BILINEAR)
                 mask = mask.resize((w, h), resample=Image.BILINEAR)
@@ -349,7 +356,7 @@ def create_image(image_id, num_per_category, change_background: bool, lock: Lock
                 start = time.time()
                 threshold = 0.2
                 while not check_iou(obj_in_this_pic, box=(pos_x, pos_y, w, h), threshold=threshold):
-                    if (time.time() - start) > 10:  # cannot find a valid position in 3 seconds
+                    if (time.time() - start) > 3:  # cannot find a valid position in 3 seconds
                         start = time.time()
                         threshold += 0.05
                         continue
@@ -458,9 +465,122 @@ def create_image(image_id, num_per_category, change_background: bool, lock: Lock
         traceback.print_exc()
 
 
+def get_object_paths():
+    object_paths = list()
+    with open('cat_2_angle.json') as fid:
+        cat_2_angle = json.load(fid)
+    with open('product_code.json') as fid:
+        product_code = json.load(fid)
+    class_2_product_code = {}
+    for k, v in product_code.items():
+        class_2_product_code["{}_{}".format(v['cat_id'], v['sku_class'])] = k
+    rotate_angles = [str(x) for x in range(1, 40, 1)]
+    for code, value in product_code.items():
+        # ========================================= custom angles
+        angles = cat_2_angle[value['sku_class']]
+        if value['cat_id'] in [i for i in range(160, 164)]:  # 瓶裝的調味料(seasoner)(其他是包裝的)
+            angles = [0]
+        elif value['cat_id'] in [i for i in range(164, 169)]:  # cylinder-like personal hygine
+            angles = [0]
+        elif value['cat_id'] in [i for i in range(169, 174)]:  # box-like personal hygine
+            angles = [0, 2]
+        elif value['cat_id'] in [37, 39, 40, 41]:  # 包裝類的即溶飲料(instant-drink)(其他是罐裝的)
+            angles = [2]
+        elif value['cat_id'] in [134, 135, 144]:  # canned candy(not package)
+            angles = [0]
+        elif value['cat_id'] in [45, 46, 47, 48, 49]:  # cup noodle
+            angles = [0, 2]
+        elif value['cat_id'] in [198, 200]:  # cylinder-like
+            angles = [0]  # horizontal
+        elif value['cat_id'] in [i for i in range(189, 194)]:  # small packet tissue
+            angles = [2]  # top view
+        elif value['cat_id'] in [i for i in range(71, 122)]:  # cylinder-like object(drink, alcohol)
+            angles = [0]
+        elif value['cat_id'] in [31, 32, 38]:
+            angles = [0]
+        # elif value['cat_id'] in [i for i in range(174, 189)]:  # big tissue
+        #     angles = [0, 2]
+        # =========================================
+        # angles = [0, 1, 2, 3]
+        # =========================================
+        for ca in angles:  # camera angle
+            for ra in rotate_angles:  # rotate angle
+                object_paths += glob.glob(os.path.join(train_imgs_dir, '{}_camera{}-{}.jpg'.format(code, ca, ra)))
+                object_paths += glob.glob(
+                    os.path.join(train_imgs_dir, '{}-back_camera{}-{}.jpg'.format(code, ca, ra)))  # 有背面的商品
+    # ================= remove specific rotation angle of tissue(too much white) ========================
+    remove_paths = []
+    nos = list(set([i for i in range(174, 189)]).difference({178}))  # large tissue, (178 shoot in different angle)
+    remove_rotate_angles = [i for i in range(2, 21)] + [i for i in range(23, 41)]
+    for no in nos:
+        code = class_2_product_code["{}_tissue".format(no)]
+        angles = [0, 1, 2, 3]
+        for ca in angles:  # camera angle
+            for ra in remove_rotate_angles:
+                remove_paths += glob.glob(
+                    os.path.join(train_imgs_dir, '{}_camera{}-{}.jpg'.format(code, ca, ra)))
+                remove_paths += glob.glob(
+                    os.path.join(train_imgs_dir, '{}-back_camera{}-{}.jpg'.format(code, ca, ra)))
+    # =====================================================================================================
+    nos = [i for i in range(189, 194)]  # small tissue, (178 shoot in different angle)
+    remove_rotate_angles = [i for i in range(2, 41)]
+    for no in nos:
+        code = class_2_product_code["{}_tissue".format(no)]
+        angles = [0, 1, 2, 3]
+        for ca in angles:  # camera angle
+            for ra in remove_rotate_angles:
+                remove_paths += glob.glob(
+                    os.path.join(train_imgs_dir, '{}_camera{}-{}.jpg'.format(code, ca, ra)))
+                remove_paths += glob.glob(
+                    os.path.join(train_imgs_dir, '{}-back_camera{}-{}.jpg'.format(code, ca, ra)))
+    # =====================================================================================================
+    nos = [178]  # large tissue, (178 shoot in different angle)
+    remove_rotate_angles = [i for i in range(1, 11)] + [i for i in range(12, 31)] + [i for i in range(32, 41)]
+    for no in nos:
+        code = class_2_product_code["{}_tissue".format(no)]
+        angles = [0, 1, 2, 3]
+        for ca in angles:  # camera angle
+            for ra in remove_rotate_angles:
+                remove_paths += glob.glob(
+                    os.path.join(train_imgs_dir, '{}_camera{}-{}.jpg'.format(code, ca, ra)))
+                remove_paths += glob.glob(
+                    os.path.join(train_imgs_dir, '{}-back_camera{}-{}.jpg'.format(code, ca, ra)))
+    # =====================================================================================================
+    # box like object
+    # only remain straight angle of object
+    nos = [i for i in range(169, 174)]
+    remove_rotate_angles = [i for i in range(2, 22)] + [i for i in range(23, 41)]
+    for no in nos:
+        code = class_2_product_code["{}_personal_hygiene".format(no)]
+        angles = [0, 1, 2, 3]
+        for ca in angles:  # camera angle
+            for ra in remove_rotate_angles:
+                remove_paths += glob.glob(
+                    os.path.join(train_imgs_dir, '{}_camera{}-{}.jpg'.format(code, ca, ra)))
+                remove_paths += glob.glob(
+                    os.path.join(train_imgs_dir, '{}-back_camera{}-{}.jpg'.format(code, ca, ra)))
+    # =====================================================================================================
+    nos = [84, 85, 86, 87, 97, 98, ] \
+          + [i for i in range(101, 108)] \
+          + [31, 32, 38]  ## box like  drink, milk, box like instant drink
+    remove_rotate_angles = list(set([i for i in range(1, 41)]).difference({1, 2, 11, 12, 20, 21, 30, 31}))
+    for no in nos:
+        code = class_2_product_code["{}".format(CATEGORIES[no])]
+        angles = [0, 1, 2, 3]
+        for ca in angles:  # camera angle
+            for ra in remove_rotate_angles:
+                remove_paths += glob.glob(
+                    os.path.join(train_imgs_dir, '{}_camera{}-{}.jpg'.format(code, ca, ra)))
+                remove_paths += glob.glob(
+                    os.path.join(train_imgs_dir, '{}-back_camera{}-{}.jpg'.format(code, ca, ra)))
+    # =====================================================================================================
+    object_paths = list(set(object_paths).difference(set(remove_paths)))
+    return object_paths
+
+
 if __name__ == '__main__':
     parser = ArgumentParser(description="Synthesize fake images")
-    parser.add_argument('--gen_num', type=int, default=15000,
+    parser.add_argument('--gen_num', type=int, default=100,
                         help='how many number of images need to create.')
     parser.add_argument('--suffix', type=str, default='test',
                         help='suffix for image folder and json file')
@@ -547,55 +667,7 @@ if __name__ == '__main__':
     # ---------------------------
     # get image list
     # ---------------------------
-    object_paths = list()
-    # object_paths += glob.glob(os.path.join(train_imgs_dir, '*.jpg'))
-    with open('cat_2_angle.json') as fid:
-        cat_2_angle = json.load(fid)
-    with open('product_code.json') as fid:
-        product_code = json.load(fid)
-    class_2_product_code = {}
-    for k, v in product_code.items():
-        class_2_product_code["{}_{}".format(v['cat_id'], v['sku_class'])] = k
-    rotate_angles = [str(x) for x in range(1, 40, 1)]
-    for code, value in product_code.items():
-        # ========================================= custom angles
-        angles = cat_2_angle[value['sku_class']]
-        if value['cat_id'] in [160, 161, 162, 163]:  # 瓶裝的調味料(seasoner)(其他是包裝的)
-            angles = [3]
-        elif value['cat_id'] in [37, 39, 40, 41]:  # 包裝類的即溶飲料(instant-drink)(其他是罐裝的)
-            angles = [1, 2]
-        elif value['cat_id'] in [134, 135, 144]:  # canned candy(not package)
-            angles = [0]
-        elif value['cat_id'] in [45, 46, 47, 48, 49]:  # cup noodle
-            angles = [0, 2]
-        elif value['cat_id'] in [198, 200]:  # cylinder-like
-            angles = [0] # horizontal
-        elif value['cat_id'] in [i for i in range(189, 194)]:  # small packet tissue
-            angles = [2] # top view
-        # =========================================
-        # angles = [0, 1, 2, 3]
-        # =========================================
-        for ca in angles:  # camera angle
-            for ra in rotate_angles:  # rotate angle
-                object_paths += glob.glob(os.path.join(train_imgs_dir, '{}_camera{}-{}.jpg'.format(code, ca, ra)))
-                object_paths += glob.glob(
-                    os.path.join(train_imgs_dir, '{}-back_camera{}-{}.jpg'.format(code, ca, ra)))  # 有背面的商品
-    ## remove specific rotation angle of tissue(too much white)
-    # =========================================
-    tissue_remove_paths = []
-    tissue_nos = [i for i in range(174, 194)]
-    tissue_remove_rotate_angles = [i for i in range(3, 17)] + [i for i in range(22, 38)]
-    for tissue_no in tissue_nos:
-        code = class_2_product_code["{}_tissue".format(tissue_no)]
-        angles = [0, 1, 2, 3]
-        for ca in angles:  # camera angle
-            for ra in tissue_remove_rotate_angles:
-                tissue_remove_paths += glob.glob(
-                    os.path.join(train_imgs_dir, '{}_camera{}-{}.jpg'.format(code, ca, ra)))
-                tissue_remove_paths += glob.glob(
-                    os.path.join(train_imgs_dir, '{}-back_camera{}-{}.jpg'.format(code, ca, ra)))
-    object_paths = list(set(object_paths).difference(set(tissue_remove_paths)))
-    # =========================================
+    object_paths = get_object_paths()
     # ---------------------------
     # items dict: Key: item_ID, value: item_images(list)
     # ---------------------------

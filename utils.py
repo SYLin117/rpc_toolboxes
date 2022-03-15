@@ -625,8 +625,10 @@ def create_syn_val(json_path, image_root=None, ann_root=None, mask_root=None, sa
 
 
 def extract_ann_mask(image_root, save_root, compare_root):
-    os.makedirs(save_root, exist_ok=True)
-    os.makedirs(compare_root, exist_ok=True)
+    if save_root:
+        os.makedirs(save_root, exist_ok=True)
+    if compare_root:
+        os.makedirs(compare_root, exist_ok=True)
 
     def normPRED_np(d):
         ma = np.max(d)
@@ -684,8 +686,10 @@ def extract_ann_mask(image_root, save_root, compare_root):
         compare_img = np.concatenate([img_cv, masked_img], axis=1)
         ##--------------------------
         filename = os.path.basename(img_path)
-        cv2.imwrite(os.path.join(save_root, '{}.png'.format(filename.split('.')[0])), save_mask)
-        cv2.imwrite(os.path.join(compare_root, '{}.jpg'.format(filename.split('.')[0])), compare_img)
+        if save_root:
+            cv2.imwrite(os.path.join(save_root, '{}.png'.format(filename.split('.')[0])), save_mask)
+        if compare_root:
+            cv2.imwrite(os.path.join(compare_root, '{}.jpg'.format(filename.split('.')[0])), compare_img)
 
 
 def copy_and_rename(image_root, save_root):
@@ -781,19 +785,19 @@ if __name__ == "__main__":
     ## ----------------------------------------
     # add_area_2_bbox('/media/ian/WD/datasets/retail_product_checkout/annotations/instances_smallval2019.json')
     ## ----------------------------------------
-    # extract_val_ann('/media/ian/WD/datasets/retail_product_checkout/instances_val2019.json',
-    #                 '/media/ian/WD/datasets/retail_product_checkout/val2019',
-    #                 '/media/ian/WD/datasets/retail_product_checkout/val2019_anns')
+    # extract_val_ann('/media/ian/WD/datasets/retail_product_checkout/instances_test2019.json',
+    #                 '/media/ian/WD/datasets/retail_product_checkout/test2019',
+    #                 '/media/ian/WD/datasets/retail_product_checkout/test2019_anns')
     ## ----------------------------------------
-    # extract_ann_mask(image_root='/media/ian/WD/datasets/retail_product_checkout/val2019_anns',
-    #                  save_root='/media/ian/WD/datasets/retail_product_checkout/val2019_anns_mask',
-    #                  compare_root='/media/ian/WD/datasets/retail_product_checkout/val2019_anns_compare')
+    extract_ann_mask(image_root='/media/ian/WD/datasets/retail_product_checkout/test2019_anns',
+                     save_root='/media/ian/WD/datasets/retail_product_checkout/test2019_anns_mask',
+                     compare_root='/media/ian/WD/datasets/retail_product_checkout/test2019_anns_compare')
     ## ----------------------------------------
-    # create_syn_val(json_path='/media/ian/WD/datasets/retail_product_checkout/instances_val2019.json',
-    #                image_root='/media/ian/WD/datasets/retail_product_checkout/val2019',
-    #                ann_root='/media/ian/WD/datasets/retail_product_checkout/val2019_anns',
-    #                mask_root='/media/ian/WD/datasets/retail_product_checkout/val2019_anns_mask',
-    #                save_root='/media/ian/WD/datasets/retail_product_checkout/val2019_syn')
+    create_syn_val(json_path='/media/ian/WD/datasets/retail_product_checkout/instances_test2019.json',
+                   image_root='/media/ian/WD/datasets/retail_product_checkout/test2019',
+                   ann_root='/media/ian/WD/datasets/retail_product_checkout/test2019_anns',
+                   mask_root='/media/ian/WD/datasets/retail_product_checkout/test2019_anns_mask',
+                   save_root='/media/ian/WD/datasets/retail_product_checkout/test2019_syn')
     ## ----------------------------------------
     # copy_and_rename(image_root='/media/ian/WD/datasets/retail_product_checkout/val2019',
     #                 save_root='/media/ian/WD/datasets/rpc_transfer2/trainA')
