@@ -85,6 +85,7 @@ CATEGORIES = ['__background__', '1_puffed_food', '2_puffed_food', '3_puffed_food
 np.random.seed(42)
 CAT_COLORS = (1 - (np.random.rand(201, 3)) * 255).astype(np.uint8)
 CAT_COLORS[0, :] = [0, 0, 0]
+SHADOW_COLOR = [0xBEBEBE, 0xA9A9A9, 0x909090, 0x808080, 0x696969]
 
 
 def buy_strategic(counter):
@@ -292,20 +293,6 @@ def create_image(image_id, num_per_category, change_background: bool, lock: Lock
                 # Random scale
                 # ---------------------------
                 # scale = 1
-                # if item_size[str(category)] == 'super_large':
-                #     scale = random.uniform(0.3, 0.6)
-                # elif item_size[str(category)] == 'extra_large':
-                #     scale = random.uniform(0.3, 0.6)
-                # elif item_size[str(category)] == 'large':
-                #     scale = random.uniform(0.3, 0.6)
-                # elif item_size[str(category)] == 'medium':
-                #     scale = random.uniform(0.3, 0.6)
-                # elif item_size[str(category)] == 'small':
-                #     scale = random.uniform(.35, 0.65)
-                # elif item_size[str(category)] == 'little':
-                #     scale = random.uniform(.35, 0.65)
-                # elif item_size[str(category)] == 'tiny':
-                #     scale = random.uniform(.35, .7)
                 # ===============================================================================
                 # scale_mean = train_val_ratio[str(category)]
                 # scale = get_truncated_normal(mean=scale_mean, sd=0.05, low=.0, upp=2.0).rvs()
@@ -350,9 +337,10 @@ def create_image(image_id, num_per_category, change_background: bool, lock: Lock
                 obj = obj.crop((x1, y1, x2, y2))
                 mask = mask.crop((x1, y1, x2, y2))
                 w, h = obj.width, obj.height
+                offset = np.random.randint(10, 20, (2))
 
                 pad = 2
-                pos_x, pos_y = generated_position(bg_width, bg_height, w, h, pad)
+                pos_x, pos_y = generated_position(bg_width, bg_height, w + offset[0], h + offset[1], pad)
                 start = time.time()
                 threshold = 0.2
                 while not check_iou(obj_in_this_pic, box=(pos_x, pos_y, w, h), threshold=threshold):
@@ -360,8 +348,12 @@ def create_image(image_id, num_per_category, change_background: bool, lock: Lock
                         start = time.time()
                         threshold += 0.05
                         continue
-                    pos_x, pos_y = generated_position(bg_width, bg_height, w, h, pad)
+                    pos_x, pos_y = generated_position(bg_width, bg_height, w + offset[0], h + offset[1], pad)
 
+                grey_level = np.random.choice(SHADOW_COLOR, 1, replace=False)[0]
+                bg_img.paste(grey_level,
+                             [pos_x + offset[0], pos_y + offset[1], pos_x + offset[0] + w, pos_y + offset[1] + h],
+                             mask=mask)
                 bg_img.paste(obj, box=(pos_x, pos_y), mask=mask)
 
                 # plt.imshow(mask)
@@ -580,7 +572,7 @@ def get_object_paths():
 
 if __name__ == '__main__':
     parser = ArgumentParser(description="Synthesize fake images")
-    parser.add_argument('--gen_num', type=int, default=100,
+    parser.add_argument('--gen_num', type=int, default=10,
                         help='how many number of images need to create.')
     parser.add_argument('--suffix', type=str, default='test',
                         help='suffix for image folder and json file')
