@@ -1,5 +1,6 @@
 # ==========================
 # 使用multithread製作偽造影像
+# specify object order in image
 # ==========================
 import glob
 import json

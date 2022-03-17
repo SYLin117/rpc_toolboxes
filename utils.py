@@ -789,17 +789,19 @@ if __name__ == "__main__":
     #                 '/media/ian/WD/datasets/retail_product_checkout/test2019',
     #                 '/media/ian/WD/datasets/retail_product_checkout/test2019_anns')
     ## ----------------------------------------
-    extract_ann_mask(image_root='/media/ian/WD/datasets/retail_product_checkout/test2019_anns',
-                     save_root='/media/ian/WD/datasets/retail_product_checkout/test2019_anns_mask',
-                     compare_root='/media/ian/WD/datasets/retail_product_checkout/test2019_anns_compare')
+    # extract_ann_mask(image_root='/media/ian/WD/datasets/retail_product_checkout/test2019_anns',
+    #                  save_root='/media/ian/WD/datasets/retail_product_checkout/test2019_anns_mask',
+    #                  compare_root='/media/ian/WD/datasets/retail_product_checkout/test2019_anns_compare')
     ## ----------------------------------------
-    create_syn_val(json_path='/media/ian/WD/datasets/retail_product_checkout/instances_test2019.json',
-                   image_root='/media/ian/WD/datasets/retail_product_checkout/test2019',
-                   ann_root='/media/ian/WD/datasets/retail_product_checkout/test2019_anns',
-                   mask_root='/media/ian/WD/datasets/retail_product_checkout/test2019_anns_mask',
-                   save_root='/media/ian/WD/datasets/retail_product_checkout/test2019_syn')
+    # create_syn_val(json_path='/media/ian/WD/datasets/retail_product_checkout/instances_test2019.json',
+    #                image_root='/media/ian/WD/datasets/retail_product_checkout/test2019',
+    #                ann_root='/media/ian/WD/datasets/retail_product_checkout/test2019_anns',
+    #                mask_root='/media/ian/WD/datasets/retail_product_checkout/test2019_anns_mask',
+    #                save_root='/media/ian/WD/datasets/retail_product_checkout/test2019_syn')
     ## ----------------------------------------
-    # copy_and_rename(image_root='/media/ian/WD/datasets/retail_product_checkout/val2019',
-    #                 save_root='/media/ian/WD/datasets/rpc_transfer2/trainA')
+    copy_and_rename(image_root='/media/ian/WD/datasets/retail_product_checkout/test2019',
+                    save_root='/media/ian/WD/datasets/rpc_transfer3/trainB')
+    copy_and_rename(image_root='/media/ian/WD/datasets/retail_product_checkout/test2019_syn',
+                    save_root='/media/ian/WD/datasets/rpc_transfer3/trainA')
     ## ----------------------------------------
-    bbox_2_area(json_path='D:\\datasets\\retail_product_checkout\\instances_val2019_small.json')
+    # bbox_2_area(json_path='D:\\datasets\\retail_product_checkout\\instances_val2019_small.json')
