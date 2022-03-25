@@ -1,6 +1,7 @@
 # ==========================
 # 使用multithread製作偽造影像
-# specify object order in image
+# specify object order in image(side by side)
+# can specified catIds
 # ==========================
 import glob
 import json
@@ -89,7 +90,7 @@ CAT_COLORS[0, :] = [0, 0, 0]
 SHADOW_COLOR = [0x403e3b, 0x454340]
 
 
-def buy_strategic(counter):
+def buy_strategic(counter, catIds=None):
     """
 
     Args:
@@ -99,8 +100,11 @@ def buy_strategic(counter):
 
     """
     global NUM_CATEGORIES
-    categories = [i + 1 for i in range(NUM_CATEGORIES)]
-    difficulty = random.randint(1, 3)
+    if catIds is None:
+        categories = [i + 1 for i in range(NUM_CATEGORIES)]
+    else:
+        categories = catIds
+    difficulty = 1
 
     num_per_category = {}
     selected_categories = np.random.choice(categories, size=1, replace=False)
@@ -625,6 +629,7 @@ if __name__ == '__main__':
                         help='use multiple background or not.')
     parser.add_argument('--shadow', action='store_true')
     parser.add_argument('--no-shadow', action='store_false')
+    parser.add_argument('--catIds', type=int, nargs='+', default=[i for i in range(1, 201)])
     parser.add_argument('--count', type=int, default=1)  ## original=32
     parser.add_argument('--local_rank', type=int, default=0)
 
@@ -646,7 +651,7 @@ if __name__ == '__main__':
     level_dict = {}
     strategics = []
     for image_id in tqdm(range(GENERATED_NUM)):
-        num_per_category, difficulty = buy_strategic(counter)
+        num_per_category, difficulty = buy_strategic(counter, args.catIds)
         level_dict['synthesized_image_{}'.format(image_id)] = 'easy'
         strategics.append(('synthesized_image_{}'.format(image_id), num_per_category))
 
