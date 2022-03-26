@@ -565,18 +565,14 @@ def get_object_paths():
 
 if __name__ == '__main__':
     parser = ArgumentParser(description="Synthesize fake images")
-    parser.add_argument('--gen_num', type=int, default=30,
+    parser.add_argument('--gen_num', type=int, default=6000,
                         help='how many number of images need to create.')
-    parser.add_argument('--suffix', type=str, default='train',
+    parser.add_argument('--suffix', type=str, default='trans',
                         help='suffix for image folder and json file')
-    parser.add_argument('--thread', type=int, default=5,
+    parser.add_argument('--thread', type=int, default=8,
                         help='using how many thread to create')
     parser.add_argument('--chg_bg', type=bool, default=False,
                         help='use multiple background or not.')
-    parser.add_argument('--shadow', action='store_true')
-    parser.add_argument('--no-shadow', action='store_false')
-    parser.add_argument('--count', type=int, default=1)  ## original=32
-    parser.add_argument('--local_rank', type=int, default=0)
 
     args = parser.parse_args()
     ###########################################################################################
@@ -635,8 +631,6 @@ if __name__ == '__main__':
     mask_dir = os.path.join('synthesize_{}_{}_mask'.format(version, args.suffix))
     os.makedirs(mask_dir, exist_ok=True)
 
-    num_threads = args.count
-    sub_strategics = strategics[args.local_rank::num_threads]
     config = Config()
     DATASET_ROOT = config.get_dataset_root()
     CURRENT_ROOT = str(pathlib.Path().resolve())
@@ -692,7 +686,7 @@ if __name__ == '__main__':
     lock = m.Lock()
     image_left = args.gen_num
     image_cnt = 1
-    MAX_JOBS_IN_QUEUE = 6
+    MAX_JOBS_IN_QUEUE = args.thread
     strategics_iter = iter(strategics)
     # print(strategics)
     jobs = {}

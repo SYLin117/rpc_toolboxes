@@ -18,15 +18,15 @@ def sort_ann_by_img(json_path):
     return annotations, images
 
 
-demo_json_path = os.path.join('D:/datasets/retail_product_checkout', 'instances_val2019.json')
+demo_json_path = os.path.join('D:/datasets/retail_product_checkout', 'instances_train2019.json')
 with open(demo_json_path) as fid:
     demo_data = json.load(fid)
 
-json_list = [os.path.join('D:/datasets/retail_product_checkout', 'instances_val2019.json'),
-             os.path.join('D:/datasets/rpc_list/synthesize_30000_noshad.json'), ]
+json_list = [os.path.join('D:/datasets/retail_product_checkout', 'instances_val2019_removed.json'),
+             os.path.join('D:/datasets/rpc_list/synthesize_30000_shad.json'), ]
 img_list = [os.path.join('D:/datasets/retail_product_checkout', 'val2019'),
-            os.path.join('D:/datasets/rpc_list/synthesize_30000_noshad_model4_msssim'), ]
-save_path = 'D:/datasets/rpc_list/val_add_aeshad'
+            os.path.join('D:/datasets/rpc_list/synthesize_30000_shad'), ]
+save_path = 'D:/datasets/rpc_list/val_removed_add_shad'
 os.makedirs(save_path, exist_ok=True)
 new_json = defaultdict()
 new_images = list()

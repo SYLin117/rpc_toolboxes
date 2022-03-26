@@ -10,11 +10,11 @@ from collections import defaultdict, OrderedDict
 import shutil
 from operator import itemgetter
 from pathlib import Path
-import cv2
+# import cv2
 from tqdm import tqdm
 import numpy as np
 from pycocotools.coco import COCO
-from chitra.image import Chitra
+# from chitra.image import Chitra
 import matplotlib.pyplot as plt
 import time
 import skimage
@@ -728,6 +728,38 @@ def bbox_2_area(json_path):
         json.dump(data, outfile, )
 
 
+def coco_remove_catIds(json_path, save_path='remove_cat.json', remove_catIds=None):
+    remove_catIds = [int(i.split('_', 1)[0]) for i in remove_catIds]
+    if remove_catIds is None:
+        return
+    with open(json_path, 'r') as fid:
+        data = json.load(fid)
+    assert data is not None
+    annotations = data['annotations']
+    images = data['images']
+    new_annotations = list()
+    new_images = list()
+    remove_images = list()
+    ## remove annotation
+    for i in range(len(annotations)):
+        if annotations[i]['category_id'] in remove_catIds:
+            remove_images.append(annotations[i]['image_id'])
+        else:
+            new_annotations.append(annotations[i])
+    remove_images = list(set(remove_images))
+    for i in range(len(images)):
+        if images[i]['id'] not in remove_images:
+            new_images.append(images[i])
+    for ann in new_annotations:
+        if ann['image_id'] in remove_images:
+            new_annotations.remove(ann)
+    new_annotations = [i for i in new_annotations if i['image_id'] not in remove_images]
+    data['annotations'] = new_annotations
+    data['images'] = new_images
+    with open(save_path, "w") as outfile:
+        json.dump(data, outfile, )
+
+
 if __name__ == "__main__":
     print("...main...")
     # find_items()
@@ -799,9 +831,17 @@ if __name__ == "__main__":
     #                mask_root='/media/ian/WD/datasets/retail_product_checkout/test2019_anns_mask',
     #                save_root='/media/ian/WD/datasets/retail_product_checkout/test2019_syn')
     ## ----------------------------------------
-    copy_and_rename(image_root='/media/ian/WD/datasets/retail_product_checkout/test2019',
-                    save_root='/media/ian/WD/datasets/rpc_transfer3/trainB')
-    copy_and_rename(image_root='/media/ian/WD/datasets/retail_product_checkout/test2019_syn',
-                    save_root='/media/ian/WD/datasets/rpc_transfer3/trainA')
+    # copy_and_rename(image_root='/media/ian/WD/datasets/retail_product_checkout/test2019',
+    #                 save_root='/media/ian/WD/datasets/rpc_transfer3/trainB')
+    # copy_and_rename(image_root='/media/ian/WD/datasets/retail_product_checkout/test2019_syn',
+    #                 save_root='/media/ian/WD/datasets/rpc_transfer3/trainA')
     ## ----------------------------------------
     # bbox_2_area(json_path='D:\\datasets\\retail_product_checkout\\instances_val2019_small.json')
+    ## ----------------------------------------
+    coco_remove_catIds(json_path='D:/datasets/retail_product_checkout/instances_val2019.json',
+                       save_path='D:/datasets/retail_product_checkout/instances_val2019_removed.json',
+                       remove_catIds=['1_puffed_food', '13_dried_fruit', '22_dried_food', '31_instant_drink',
+                                      '42_instant_noodles', '54_dessert', '71_drink', '79_alcohol', '81_drink',
+                                      '88_alcohol', '97_milk', '108_canned_food', '122_chocolate', '134_gum',
+                                      '142_candy',
+                                      '152_seasoner', '164_personal_hygiene', '174_tissue', '194_stationery'])
