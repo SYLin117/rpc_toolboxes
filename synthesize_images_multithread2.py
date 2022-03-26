@@ -602,15 +602,20 @@ if __name__ == '__main__':
             level_dict['synthesized_image_{}'.format(image_id)] = int_2_diff[difficulty]
             strategics.append(('synthesized_image_{}'.format(image_id), num_per_category))
         strategics = sorted(strategics, key=lambda s: s[0])
+        save_data = dict()
+        save_data['strategics'] = strategics
+        save_data['leven_dict'] = level_dict
         if os.path.exists(strategics_name):
             os.remove(strategics_name)
         with open(strategics_name, 'w') as f:
-            json.dump(strategics, f)
+            json.dump(save_data, f)
 
     else:
         with open(strategics_name, 'r') as fid:
-            strategics = json.load(fid)
-            strategics = sorted(strategics, key=lambda s: s[0])
+            data = json.load(fid)
+        strategics = data['strategics']
+        strategics = sorted(strategics, key=lambda s: s[0])
+        level_dict = data['level_dict']
 
     ###########################################################################################
     ###########################################################################################
