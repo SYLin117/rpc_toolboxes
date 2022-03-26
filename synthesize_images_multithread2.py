@@ -86,7 +86,7 @@ CATEGORIES = ['__background__', '1_puffed_food', '2_puffed_food', '3_puffed_food
 np.random.seed(42)
 CAT_COLORS = (1 - (np.random.rand(201, 3)) * 255).astype(np.uint8)
 CAT_COLORS[0, :] = [0, 0, 0]
-SHADOW_COLOR = [0x403e3b, 0x454340]
+SHADOW_COLOR = [0x393433, 0x2a2727]
 
 
 def buy_strategic(counter):
@@ -116,16 +116,7 @@ def buy_strategic(counter):
     num_per_category = {}
     generated = 0
     selected_categories = np.random.choice(categories, size=num_categories, replace=False)
-    # ================= original rule ==========================
-    # for i, category in enumerate(selected_categories):
-    #     i += 1
-    #     if i == num_categories:
-    #         count = num_instances - generated
-    #     else:
-    #         count = random.randint(1, num_instances - (num_categories - i) - generated)
-    #
-    #     generated += count
-    #     num_per_category[int(category)] = count
+
     for category in selected_categories:
         count = random.randint(1, 3)
         num_per_category[int(category)] = count
@@ -269,7 +260,7 @@ def get_random_pos_neg():
     return 1 if random.random() < 0.8 else -1
 
 
-def create_image(image_id, num_per_category, change_background: bool, paste_shadow:bool, lock: Lock):
+def create_image(image_id, num_per_category, change_background: bool, lock: Lock):
     try:
         global level_dict, ann_idx, json_ann, json_img, json_color  # ann_idx: for create new annotation id, json_ann: new annotation list, json_img: new image list
         instance_num = 0
@@ -285,6 +276,7 @@ def create_image(image_id, num_per_category, change_background: bool, paste_shad
             background_id = 1
         bg_img_cv = cv2.imread('bg{}.jpg'.format(background_id), cv2.IMREAD_COLOR)
         bg_img_cv = cv2.cvtColor(bg_img_cv, cv2.COLOR_BGR2RGB)
+        bg_img_cv2 = bg_img_cv.copy()
         bg_height, bg_width = bg_img_cv.shape[:2]
         mask_img_cv = np.zeros((bg_height, bg_width, 3), dtype=np.uint8)
         # ----------------- get background image --------------------
@@ -315,16 +307,6 @@ def create_image(image_id, num_per_category, change_background: bool, paste_shad
                 obj = obj.crop((x, y, x + w, y + h))
                 mask = mask.crop((x, y, x + w, y + h))
 
-                # ---------------------------
-                # Random scale
-                # ---------------------------
-                # scale = 1
-                # ===============================================================================
-                # scale_mean = train_val_ratio[str(category)]
-                # scale = get_truncated_normal(mean=scale_mean, sd=0.05, low=.0, upp=2.0).rvs()
-                # while scale <= 0:
-                #     scale = get_truncated_normal(mean=scale_mean-.1, sd=0.05, low=.0, upp=2.0).rvs()
-                # ===============================================================================
                 scale_mean = train_val_ratio[str(category)]
                 scale_mean = math.sqrt(scale_mean)
                 if category in ([i for i in range(71, 122)] + [i for i in range(160, 164)]):  # drink
@@ -364,13 +346,9 @@ def create_image(image_id, num_per_category, change_background: bool, paste_shad
                 mask = mask.crop((x1, y1, x2, y2))
                 mask_l = mask.convert('L')
                 w, h = obj.width, obj.height
-                offset = []
-                if paste_shadow:
-                    offset.append(np.random.randint(5, 15) * get_random_pos_neg())  # right offset
-                    offset.append(np.random.randint(10, 40) * get_random_pos_neg())  # down offset
-                else:
-                    offset.append(0)
-                    offset.append(0)
+                offset = []  # for shadow
+                offset.append(np.random.randint(5, 15) * get_random_pos_neg())  # right offset
+                offset.append(np.random.randint(10, 40) * get_random_pos_neg())  # down offset
 
                 pos_x, pos_y = generated_position(bg_width, bg_height, w, h, padx=abs(offset[0]), pady=abs(offset[1]))
                 start = time.time()
@@ -390,14 +368,11 @@ def create_image(image_id, num_per_category, change_background: bool, paste_shad
                 shadow = Image.new('RGB', (w, h), SHADOW_COLOR[shadow_indx])
                 shodow_cv = np.array(shadow)
 
-                if paste_shadow:
-                    trans_paste(bg_img_cv, shodow_cv, mask_cv, bbox=(pos_x + offset[0], pos_y + offset[1], w, h),
-                                trans=True)
                 trans_paste(bg_img_cv, obj_cv, mask_cv, bbox=(pos_x, pos_y, w, h), trans=False)
-                # bg_img.paste(obj, box=(pos_x, pos_y), mask=mask)
-
-                # plt.imshow(mask)
-                # plt.show()
+                # paste shadow
+                trans_paste(bg_img_cv2, shodow_cv, mask_cv, bbox=(pos_x + offset[0], pos_y + offset[1], w, h),
+                            trans=True)
+                trans_paste(bg_img_cv2, obj_cv, mask_cv, bbox=(pos_x, pos_y, w, h), trans=False)
 
                 # ---------------------------
                 # Find center of mass
@@ -433,39 +408,13 @@ def create_image(image_id, num_per_category, change_background: bool, paste_shad
                         color_cat_dict[str(tuple(color_tuple_list))] = category
                         color_annId_dict[str(tuple(color_tuple_list))] = ann_idx
 
-                        # ----------------- # using erode to create border for different mask ----------------------
-                        # color_mask_cv2 = np.asarray(color_mask)
-                        # mask_cv2 = np.asarray(mask)
-                        # kernel = np.ones((3, 3), np.uint8)
-                        # erosion = cv2.erode(mask_cv2, kernel, iterations=3)
-                        # diff = cv2.absdiff(mask_cv2, erosion) / 255  # use as mask for black border paint on color mask
-                        # diff = np.stack((diff, diff, diff), axis=2)  # make it to 3-channel
-                        # blank_image = np.zeros((mask.size[1], mask.size[0], 3), np.uint8)
-                        # # 為了讓相同的物件重疊的時候有黑邊可以區隔
-                        # color_mask_cv2[:, :, :] = color_mask_cv2[:, :, :] * (1 - diff) + blank_image * diff
-                        # color_mask = Image.fromarray(color_mask_cv2)
-                        ## ---------------------------------------
-                        # ## ------------ another way to make mask border
-                        # ## 找出mask的邊界
-                        # Contours, _ = cv2.findContours(erosion, cv2.RETR_EXTERNAL,
-                        #                                cv2.CHAIN_APPROX_TC89_KCOS)
-                        # for cnt in Contours:
-                        #     hull = cv2.convexHull(cnt)
-                        #     cv2.drawContours(color_mask_cv2, [hull], -1, color=(0, 0, 0), thickness=4, )
-                        ## ---------------------------------------
-                        # ------------------- using opencv not pil to paste the mask ---------------------
                         color_mask_np = np.array(color_mask)
                         mask_np = np.array(mask) * 1  # single channel mask
                         mask_np = np.stack((mask_np, mask_np, mask_np), axis=2)  # RGB mask
                         mask_img_np[pos_y:pos_y + h, pos_x:pos_x + w, :] = \
                             mask_img_np[pos_y:pos_y + h, pos_x:pos_x + w, :] * (np.ones_like(mask_np) - mask_np) + \
                             color_mask_np * mask_np
-                        # mask_img = Image.fromarray(mask_img_np)
-                        # plt.imshow(mask_img)
-                        # plt.show()
-                        # ----------------------------------------
-                        # mask_img.paste(color_mask, box=(pos_x, pos_y), mask=mask)
-                        # ----------------------------------------
+
                         instance_id += 1
                     ann_idx += 1
         # -------------------------------
@@ -479,6 +428,8 @@ def create_image(image_id, num_per_category, change_background: bool, paste_shad
         mask_name = '{}.png'.format(image_id)  # mask use png format, jpg would change pixel value after saving
         bg_img = Image.fromarray(bg_img_cv)
         bg_img.save(os.path.join(output_dir, image_name))
+        bg_img2 = Image.fromarray(bg_img_cv2)
+        bg_img2.save(os.path.join(output_dir2, image_name))
         if save_mask:
             # mask_img = Image.fromarray(mask_img_np)
             # print('mask contain :{} values'.format(np.unique(mask_img_np)))
@@ -633,29 +584,35 @@ if __name__ == '__main__':
     NUM_CATEGORIES = 200
     GENERATED_NUM = args.gen_num
     ###########################################################################################
-    counter = {
-        'easy_mode': 0,
-        'medium_mode': 0,
-        'hard_mode': 0
-    }
-    int_2_diff = {
-        1: 'easy',
-        2: 'medium',
-        3: 'hard'
-    }
-    level_dict = {}
-    strategics = []
-    for image_id in tqdm(range(GENERATED_NUM)):
-        num_per_category, difficulty = buy_strategic(counter)
-        level_dict['synthesized_image_{}'.format(image_id)] = int_2_diff[difficulty]
-        strategics.append(('synthesized_image_{}'.format(image_id), num_per_category))
-    # strategics_name = 'strategics_train.json'
-    # if os.path.exists(strategics_name):
-    #     os.remove(strategics_name)
-    # with open(strategics_name, 'w') as f:
-    #     json.dump(strategics, f)
-    # print(counter)  # {'easy_mode': 25078, 'medium_mode': 37287, 'hard_mode': 37635}
-    # quit()
+    strategics_name = 'strategics_train_{}.json'.format(args.gen_num)
+    if not os.path.exists(strategics_name):
+        counter = {
+            'easy_mode': 0,
+            'medium_mode': 0,
+            'hard_mode': 0
+        }
+        int_2_diff = {
+            1: 'easy',
+            2: 'medium',
+            3: 'hard'
+        }
+        level_dict = {}
+        strategics = []
+        for image_id in tqdm(range(GENERATED_NUM)):
+            num_per_category, difficulty = buy_strategic(counter)
+            level_dict['synthesized_image_{}'.format(image_id)] = int_2_diff[difficulty]
+            strategics.append(('synthesized_image_{}'.format(image_id), num_per_category))
+        strategics = sorted(strategics, key=lambda s: s[0])
+        if os.path.exists(strategics_name):
+            os.remove(strategics_name)
+        with open(strategics_name, 'w') as f:
+            json.dump(strategics, f)
+
+    else:
+        with open(strategics_name, 'r') as fid:
+            strategics = json.load(fid)
+            strategics = sorted(strategics, key=lambda s: s[0])
+
     ###########################################################################################
     ###########################################################################################
     # with open(strategics_name) as f:
@@ -664,8 +621,9 @@ if __name__ == '__main__':
     version = str(GENERATED_NUM)
 
     output_dir = os.path.join('synthesize_{}_{}'.format(version, args.suffix))
-    if not os.path.exists(output_dir):
-        os.mkdir(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+    output_dir2 = os.path.join('synthesize_{}_{}_shadow'.format(version, args.suffix))
+    os.makedirs(output_dir2, exist_ok=True)
 
     # if not os.path.exists(os.path.join(output_dir, 'density_maps')):
     #     os.mkdir(os.path.join(output_dir, 'density_maps'))
@@ -684,7 +642,7 @@ if __name__ == '__main__':
                               'instances_train2019.json')  # rpc的原始train.json
     train_imgs_dir = os.path.join(DATASET_ROOT, 'retail_product_checkout', 'train2019')  # rpc 的train影像資料夾
     train_imgs_mask_dir = os.path.join(sys.path[0], 'extracted_masks_tracer5_morph10', 'masks')  # 擷取的mask影像資料夾
-    save_mask = True
+    save_mask = False
 
     with open('ratio_annotations.json') as fid:
         ratio_annotations = json.load(fid)
@@ -742,8 +700,7 @@ if __name__ == '__main__':
                 # image_id = next(iter(strat.keys()))
                 # num_per_category = next(iter(strat.values()))
                 # print('image_id :'.format(image_id))
-                job = executor.submit(create_image, image_id, num_per_category, args.chg_bg, args.shadow,
-                                      lock=lock)
+                job = executor.submit(create_image, image_id, num_per_category, args.chg_bg, lock=lock)
                 jobs[job] = image_id
                 if len(jobs) > MAX_JOBS_IN_QUEUE:
                     break  # limit the job submission for now job
