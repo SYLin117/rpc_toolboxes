@@ -261,7 +261,7 @@ def get_random_pos_neg():
 
 def create_image(image_id, num_per_category, change_background: bool, lock: Lock):
     try:
-        global level_dict, ann_idx, json_ann, json_img, json_color  # ann_idx: for create new annotation id, json_ann: new annotation list, json_img: new image list
+        global object_category_paths, level_dict, ann_idx, json_ann, json_img, json_color  # ann_idx: for create new annotation id, json_ann: new annotation list, json_img: new image list
         instance_num = 0
         for category, count in num_per_category.items():
             instance_num += count
@@ -437,13 +437,14 @@ def create_image(image_id, num_per_category, change_background: bool, lock: Lock
             # plt.imshow(mask_img)
             # plt.show()
             # time.sleep(100)
-        json_img.append({
-            'file_name': image_name,
-            'id': int(img_id_num),
-            'width': 1815,
-            'height': 1815,
-            'level': level_dict[os.path.basename(image_name).split('.')[0]]
-        })
+        with lock:
+            json_img.append({
+                'file_name': image_name,
+                'id': int(img_id_num),
+                'width': 1815,
+                'height': 1815,
+                'level': level_dict[os.path.basename(image_name).split('.')[0]]
+            })
     except:
         traceback.print_exc()
 
@@ -565,7 +566,7 @@ def get_object_paths():
 
 if __name__ == '__main__':
     parser = ArgumentParser(description="Synthesize fake images")
-    parser.add_argument('--gen_num', type=int, default=6000,
+    parser.add_argument('--gen_num', type=int, default=24000,
                         help='how many number of images need to create.')
     parser.add_argument('--suffix', type=str, default='trans',
                         help='suffix for image folder and json file')
@@ -600,7 +601,7 @@ if __name__ == '__main__':
         strategics = sorted(strategics, key=lambda s: s[0])
         save_data = dict()
         save_data['strategics'] = strategics
-        save_data['leven_dict'] = level_dict
+        save_data['level_dict'] = level_dict
         if os.path.exists(strategics_name):
             os.remove(strategics_name)
         with open(strategics_name, 'w') as f:

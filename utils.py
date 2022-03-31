@@ -10,7 +10,7 @@ from collections import defaultdict, OrderedDict
 import shutil
 from operator import itemgetter
 from pathlib import Path
-# import cv2
+import cv2
 from tqdm import tqdm
 import numpy as np
 from pycocotools.coco import COCO
@@ -729,6 +729,13 @@ def bbox_2_area(json_path):
 
 
 def coco_remove_catIds(json_path, save_path='remove_cat.json', remove_catIds=None):
+    """
+    移除特定的類別，且包含該類別的影像也移除
+    :param json_path:
+    :param save_path:
+    :param remove_catIds:
+    :return:
+    """
     remove_catIds = [int(i.split('_', 1)[0]) for i in remove_catIds]
     if remove_catIds is None:
         return
@@ -759,6 +766,21 @@ def coco_remove_catIds(json_path, save_path='remove_cat.json', remove_catIds=Non
     with open(save_path, "w") as outfile:
         json.dump(data, outfile, )
 
+
+def get_avg_brightness(folder):
+    brightness = []
+    files = os.listdir(folder)
+    for file in tqdm(files):
+        img = cv2.imread(os.path.join(folder, file))
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        h, s, v = cv2.split(hsv)
+        brightness.append(np.average(v))
+    brightness = np.array(brightness)
+    print(np.average(brightness))
+
+def coco_strink_data(json_path, save_path, ratio):
+
+    # TODO
 
 if __name__ == "__main__":
     print("...main...")
@@ -838,10 +860,13 @@ if __name__ == "__main__":
     ## ----------------------------------------
     # bbox_2_area(json_path='D:\\datasets\\retail_product_checkout\\instances_val2019_small.json')
     ## ----------------------------------------
-    coco_remove_catIds(json_path='D:/datasets/retail_product_checkout/instances_val2019.json',
-                       save_path='D:/datasets/retail_product_checkout/instances_val2019_removed.json',
-                       remove_catIds=['1_puffed_food', '13_dried_fruit', '22_dried_food', '31_instant_drink',
-                                      '42_instant_noodles', '54_dessert', '71_drink', '79_alcohol', '81_drink',
-                                      '88_alcohol', '97_milk', '108_canned_food', '122_chocolate', '134_gum',
-                                      '142_candy',
-                                      '152_seasoner', '164_personal_hygiene', '174_tissue', '194_stationery'])
+    # coco_remove_catIds(json_path='D:/datasets/retail_product_checkout/instances_val2019.json',
+    #                    save_path='D:/datasets/retail_product_checkout/instances_val2019_removed.json',
+    #                    remove_catIds=['1_puffed_food', '13_dried_fruit', '22_dried_food', '31_instant_drink',
+    #                                   '42_instant_noodles', '54_dessert', '71_drink', '79_alcohol', '81_drink',
+    #                                   '88_alcohol', '97_milk', '108_canned_food', '122_chocolate', '134_gum',
+    #                                   '142_candy',
+    #                                   '152_seasoner', '164_personal_hygiene', '174_tissue', '194_stationery'])
+    ## ------------------------------------------------------------
+    get_avg_brightness("D:/datasets/rpc_list/synthesize_30000_noshad")
+    get_avg_brightness("D:/datasets/retail_product_checkout/test2019")
