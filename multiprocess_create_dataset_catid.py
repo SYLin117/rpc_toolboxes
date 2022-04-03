@@ -88,7 +88,7 @@ CAT_COLORS[0, :] = [0, 0, 0]
 SHADOW_COLOR = [0x393433, 0x2a2727]
 
 
-def buy_strategic(counter):
+def buy_strategic(counter, catIds=None):
     """
 
     Args:
@@ -98,26 +98,16 @@ def buy_strategic(counter):
 
     """
     global NUM_CATEGORIES
-    categories = [i + 1 for i in range(NUM_CATEGORIES)]
-    difficulty = random.randint(1, 3)
-    if difficulty == 1:
-        num_categories = random.randint(3, 5)
-        num_instances = random.randint(num_categories, 5)
-        counter['easy_mode'] += 1
-    elif difficulty == 2:
-        num_categories = random.randint(5, 8)
-        num_instances = random.randint(num_categories, 8)
-        counter['medium_mode'] += 1
-    elif difficulty == 3:
-        num_categories = random.randint(8, 10)
-        num_instances = random.randint(num_categories, 10)
-        counter['hard_mode'] += 1
-    num_per_category = {}
-    generated = 0
-    selected_categories = np.random.choice(categories, size=num_categories, replace=False)
+    if catIds is None:
+        categories = [i + 1 for i in range(NUM_CATEGORIES)]
+    else:
+        categories = catIds
+    difficulty = 1
 
+    num_per_category = {}
+    selected_categories = np.random.choice(categories, size=1, replace=False)
     for category in selected_categories:
-        count = random.randint(1, 3)
+        count = 3
         num_per_category[int(category)] = count
     return num_per_category, difficulty
 
@@ -259,6 +249,10 @@ def get_random_pos_neg():
     return 1 if random.random() < 0.8 else -1
 
 
+def get_side_by_side():
+    return True if random.random() < 0.5 else False
+
+
 def create_image(output_dir, output_dir2, object_category_paths, level_dict, image_id, num_per_category,
                  change_background: bool, ratio_annotations, train_imgs_mask_dir, annotations, train_val_ratio,
                  lock: Lock):
@@ -289,10 +283,23 @@ def create_image(output_dir, output_dir2, object_category_paths, level_dict, ima
         obj_in_this_pic = list()
         for category, count in num_per_category.items():
             category = int(category)
-            for _ in range(count):
+            # ------------ 新增parameter for並聯 ---------------
+            first_x = None
+            first_y = None
+            first_obj_path = None
+            side_by_side = get_side_by_side()  # 並排(往右) or 連續(往下)
+            first_offset = None
+            first_scale = None
+            overlap = 15
+            # ------------------------------
+            for i in range(count):
                 paths = object_category_paths[category]
 
-                object_path = sample_select_object_index(category, paths, ratio_annotations, threshold=0.45)
+                if i == 0:
+                    object_path = sample_select_object_index(category, paths, ratio_annotations, threshold=0.4)
+                    first_obj_path = object_path
+                else:
+                    object_path = first_obj_path
 
                 name = os.path.basename(object_path)
                 mask_path = os.path.join(train_imgs_mask_dir, '{}.png'.format(name.split('.')[0]))
@@ -309,28 +316,29 @@ def create_image(output_dir, output_dir2, object_category_paths, level_dict, ima
                 obj = obj.crop((x, y, x + w, y + h))
                 mask = mask.crop((x, y, x + w, y + h))
 
-                scale_mean = train_val_ratio[str(category)]
-                scale_mean = math.sqrt(scale_mean)
-                if category in ([i for i in range(71, 122)] + [i for i in range(160, 164)]):  # drink
-                    scale_mean -= 0.15
-                if category in ([i for i in range(136, 142)] + [i for i in range(145, 147)]):  # small gum
-                    scale_mean += 0.15
-                std = 0.01
-                low = scale_mean - 3 * std
-                up = scale_mean + 3 * std
-                scale = get_truncated_normal(mean=scale_mean, sd=std, low=low, upp=up).rvs()
-                while scale <= 0:
+                # ---------------------------
+                # scale
+                # ---------------------------
+                if i == 0:
+                    scale_mean = train_val_ratio[str(category)]
+                    scale_mean = math.sqrt(scale_mean)
+                    if category in ([i for i in range(71, 122)] + [i for i in range(160, 164)]):  # drink
+                        scale_mean -= 0.15
+                    if category in ([i for i in range(136, 142)] + [i for i in range(145, 147)]):  # small gum
+                        scale_mean += 0.15
+                    std = 0.01
+                    low = scale_mean - 3 * std
+                    up = scale_mean + 3 * std
                     scale = get_truncated_normal(mean=scale_mean, sd=std, low=low, upp=up).rvs()
+                    while scale <= 0:
+                        scale = get_truncated_normal(mean=scale_mean, sd=std, low=low, upp=up).rvs()
+                    first_scale = scale
+                else:
+                    scale = first_scale
+
                 w, h = int(w * scale), int(h * scale)
                 obj = obj.resize((w, h), resample=Image.BILINEAR)
                 mask = mask.resize((w, h), resample=Image.BILINEAR)
-
-                # ---------------------------
-                # Random rotate
-                # ---------------------------
-                angle = random.random() * 360
-                obj = obj.rotate(angle, resample=Image.BILINEAR, expand=True)
-                mask = mask.rotate(angle, resample=Image.BILINEAR, expand=True)
 
                 # ---------------------------
                 # Crop according to mask
@@ -362,6 +370,44 @@ def create_image(output_dir, output_dir2, object_category_paths, level_dict, ima
                         continue
                     pos_x, pos_y = generated_position(bg_width, bg_height, w, h, padx=abs(offset[0]),
                                                       pady=abs(offset[1]))
+
+                # 設定offset
+                if i == 0:
+                    offset = []
+                    offset.append(np.random.randint(5, 15) * get_random_pos_neg())  # right offset
+                    offset.append(np.random.randint(10, 40) * get_random_pos_neg())  # down offset
+                    first_offset = offset
+                else:
+                    offset = first_offset
+
+                if i == 0:
+                    if side_by_side:  # 並聯
+                        if (bg_width - 3 * w - 2 * abs(offset[0])) < 0:  # 並聯是否會超過背景寬度
+                            overlap = int((w * 3 + abs(offset[0]) - bg_width) / 2)  # 調整overlap使圖片背景可以容納
+                            tmp_w = 3 * w - 2 * overlap - abs(offset[0])
+                            pos_x, pos_y = generated_position(bg_width, bg_height, tmp_w, h, padx=abs(offset[0]),
+                                                              pady=abs(offset[1]))
+                        else:
+                            pos_x, pos_y = generated_position(bg_width, bg_height, w * 3, h, padx=abs(offset[0]),
+                                                              pady=abs(offset[1]))
+                    else:  # 直聯
+                        if (bg_height - 3 * h - 2 * abs(offset[1])) <= 0:
+                            overlap = int((h * 3 + abs(offset[1]) - bg_height) / 2)
+                            tmp_h = 3 * h - 2 * overlap - abs(offset[1])
+                            pos_x, pos_y = generated_position(bg_width, bg_height, w, tmp_h, padx=abs(offset[0]),
+                                                              pady=abs(offset[1]))
+                        else:
+                            pos_x, pos_y = generated_position(bg_width, bg_height, w, h * 3, padx=abs(offset[0]),
+                                                              pady=abs(offset[1]))
+                    first_x = pos_x
+                    first_y = pos_y
+                else:
+                    if side_by_side:  # 並聯
+                        pos_x = first_x + i * w - i * overlap
+                        pos_y = first_y
+                    else:  # 直聯
+                        pos_x = first_x
+                        pos_y = first_y + i * h - i * overlap
 
                 obj_cv = np.array(obj)
                 mask_cv = np.array(mask) * 1  # single channel mask
@@ -404,15 +450,14 @@ def create_image(output_dir, output_dir2, object_category_paths, level_dict, ima
         bg_img.save(os.path.join(output_dir, image_name))  # with shadow
         bg_img2 = Image.fromarray(bg_img_cv2)
         bg_img2.save(os.path.join(output_dir2, image_name))  # no shadow
-
-        new_img = {
-            'file_name': image_name,
-            'id': int(img_id_num),
-            'width': 1815,
-            'height': 1815,
-            'level': level_dict[os.path.basename(image_name).split('.')[0]]
-        }
         with lock:
+            new_img = {
+                'file_name': image_name,
+                'id': int(img_id_num),
+                'width': 1815,
+                'height': 1815,
+                'level': level_dict[os.path.basename(image_name).split('.')[0]]
+            }
             json_img.append(new_img)
         print("\n{} done".format(image_name))
     except Exception as e:
@@ -543,15 +588,15 @@ def init_globals(ann_counter, ann_json, image_json, ):
 
 if __name__ == '__main__':
     parser = ArgumentParser(description="Synthesize fake images")
-    parser.add_argument('--gen_num', type=int, default=24000,
+    parser.add_argument('--gen_num', type=int, default=100,
                         help='how many number of images need to create.')
     parser.add_argument('--suffix', type=str, default='train',
                         help='suffix for image folder and json file')
-    parser.add_argument('--thread', type=int, default=8,
+    parser.add_argument('--thread', type=int, default=4,
                         help='using how many thread to create')
     parser.add_argument('--chg_bg', type=bool, default=False,
                         help='use multiple background or not.')
-
+    parser.add_argument('--catIds', type=int, nargs='+', default=[i for i in range(1, 201)])
     args = parser.parse_args()
     ###########################################################################################
     NUM_CATEGORIES = 200
@@ -572,7 +617,7 @@ if __name__ == '__main__':
         level_dict = {}
         strategics = []
         for image_id in tqdm(range(GENERATED_NUM)):
-            num_per_category, difficulty = buy_strategic(counter)
+            num_per_category, difficulty = buy_strategic(counter, args.catIds)
             level_dict['synthesized_image_{}'.format(image_id)] = int_2_diff[difficulty]
             strategics.append(('synthesized_image_{}'.format(image_id), num_per_category))
         strategics = sorted(strategics, key=lambda s: s[0])

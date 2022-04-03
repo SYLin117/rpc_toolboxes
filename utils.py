@@ -1,6 +1,7 @@
 import json
 import glob
 import os
+import random
 import sys
 
 import pandas as pd
@@ -404,7 +405,7 @@ def rescale_coco_data(image_folder: str, mask_folder: Optional[str],
     print("... resize images ...")
     resize_images(images, target_size, cv2.INTER_CUBIC, target_image_folder)
     print("... resize mask ...")
-    if mask_folder:
+    if mask_folder is not None:
         resize_images(masks, target_size, cv2.INTER_NEAREST_EXACT, target_mask_folder, isMask=True)
     json_images = json_data['images']
     for img in json_images:
@@ -778,9 +779,35 @@ def get_avg_brightness(folder):
     brightness = np.array(brightness)
     print(np.average(brightness))
 
-def coco_strink_data(json_path, save_path, ratio):
 
+def coco_strink_data(json_path, save_path, ratio):
+    """
+
+    :param json_path:
+    :param save_path:
+    :param ratio: remove portion
+    :return:
+    """
     # TODO
+    with open(json_path, 'r') as fid:
+        data = json.load(fid)
+    assert data is not None
+    annotations = data['annotations']
+    images = data['images']
+    new_annotations = list()
+    new_images = list()
+    remove_images = random.choices(images, k=int(len(images) * ratio))
+    for i in range(len(images)):
+        if images[i]['id'] not in remove_images:
+            new_images.append(images[i])
+    for ann in annotations:
+        if ann['image_id'] not in remove_images:
+            new_annotations.append(ann)
+    data['annotations'] = new_annotations
+    data['images'] = new_images
+    with open(save_path, "w") as outfile:
+        json.dump(data, outfile, )
+
 
 if __name__ == "__main__":
     print("...main...")
@@ -799,19 +826,30 @@ if __name__ == "__main__":
     # check_ann_duplicate_id('/media/ian/WD/datasets/rpc_list/sod_synthesize_15000_0.json')
     ## ---------------------------------------
     ### resize coco dataset (include json file, masks and images)
-    # name = 'synthesize_15000_test'
-    # image_folder = '/media/ian/WD/datasets/rpc_list/{}'.format(name)
-    # mask_folder = '/media/ian/WD/datasets/rpc_list/{}_mask'.format(name)
-    # json_file = '/media/ian/WD/datasets/rpc_list/{}.json'.format(name)
-    # target_image_folder = '/media/ian/WD/datasets/rpc_list/{}_small'.format(name)
-    # target_mask_folder = '/media/ian/WD/datasets/rpc_list/{}_mask_small'.format(name)
-    # target_json_file = '/media/ian/WD/datasets/rpc_list/{}_small.json'.format(name)
-    image_folder = '/media/ian/WD/datasets/retail_product_checkout/val2019'
+    config = Config()
+    dataroot = config.get_dataset_root()
+
+    name = 'synthesize_24000_train'
+    image_folder = os.path.join(dataroot, 'rpc_list/{}_shadow'.format(name))
     mask_folder = None
-    json_file = '/media/ian/WD/datasets/retail_product_checkout/annotations/instances_val2019.json'
-    target_image_folder = '/media/ian/WD/datasets/retail_product_checkout/val2019_small'
+    json_file = os.path.join(dataroot, 'rpc_list/{}.json'.format(name))
+    target_image_folder = os.path.join(dataroot, 'rpc_list/{}_shadow_512'.format(name))
     target_mask_folder = None
-    target_json_file = '/media/ian/WD/datasets/retail_product_checkout/annotations/instances_val2019_small.json'
+    target_json_file = os.path.join(dataroot, 'rpc_list/{}_512.json'.format(name))
+    rescale_coco_data(image_folder=image_folder,
+                      mask_folder=mask_folder,
+                      json_file=json_file,
+                      target_size=512,
+                      target_image_folder=target_image_folder,
+                      target_mask_folder=target_mask_folder,
+                      target_json_file=target_json_file)
+
+    # image_folder = os.path.join(dataroot, 'retail_product_checkout/test2019')
+    # mask_folder = None
+    # json_file = os.path.join(dataroot, 'retail_product_checkout/instances_test2019.json')
+    # target_image_folder = os.path.join(dataroot, 'retail_product_checkout/test2019_512')
+    # target_mask_folder = None
+    # target_json_file = os.path.join(dataroot, 'retail_product_checkout/instances_test2019_512.json')
     # rescale_coco_data(image_folder=image_folder,
     #                   mask_folder=mask_folder,
     #                   json_file=json_file,
@@ -868,5 +906,5 @@ if __name__ == "__main__":
     #                                   '142_candy',
     #                                   '152_seasoner', '164_personal_hygiene', '174_tissue', '194_stationery'])
     ## ------------------------------------------------------------
-    get_avg_brightness("D:/datasets/rpc_list/synthesize_30000_noshad")
-    get_avg_brightness("D:/datasets/retail_product_checkout/test2019")
+    # get_avg_brightness("D:/datasets/rpc_list/synthesize_30000_noshad")
+    # get_avg_brightness("D:/datasets/retail_product_checkout/test2019")
