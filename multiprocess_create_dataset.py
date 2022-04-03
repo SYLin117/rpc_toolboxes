@@ -547,7 +547,7 @@ if __name__ == '__main__':
                         help='how many number of images need to create.')
     parser.add_argument('--suffix', type=str, default='train',
                         help='suffix for image folder and json file')
-    parser.add_argument('--thread', type=int, default=8,
+    parser.add_argument('--thread', type=int, default=16,
                         help='using how many thread to create')
     parser.add_argument('--chg_bg', type=bool, default=False,
                         help='use multiple background or not.')
@@ -590,7 +590,7 @@ if __name__ == '__main__':
         strategics = data['strategics']
         strategics = sorted(strategics, key=lambda s: s[0])
         level_dict = data['level_dict']
-
+    strategics = sorted(strategics, key=lambda s: int(os.path.splitext(s[0])[0].split('_')[2]))
     ###########################################################################################
     ###########################################################################################
     # with open(strategics_name) as f:
@@ -667,7 +667,7 @@ if __name__ == '__main__':
     strategics_iter = iter(strategics)
     # print(strategics)
     jobs = list()
-    with ProcessPoolExecutor(max_workers=8, initializer=init_globals,
+    with ProcessPoolExecutor(max_workers=MAX_JOBS_IN_QUEUE, initializer=init_globals,
                              initargs=(ann_idx, json_ann, json_img,)) as executor:
         results = [executor.submit(create_image,
                                    output_dir, output_dir2, object_category_paths, level_dict, image_id,

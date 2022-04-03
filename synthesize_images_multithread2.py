@@ -346,8 +346,8 @@ def create_image(image_id, num_per_category, change_background: bool, lock: Lock
                 mask_l = mask.convert('L')
                 w, h = obj.width, obj.height
                 offset = []  # for shadow
-                offset.append(np.random.randint(5, 15) * get_random_pos_neg())  # right offset
-                offset.append(np.random.randint(10, 40) * get_random_pos_neg())  # down offset
+                offset.append(np.random.randint(10, 30) * get_random_pos_neg())  # right offset
+                offset.append(np.random.randint(20, 50) * get_random_pos_neg())  # down offset
 
                 pos_x, pos_y = generated_position(bg_width, bg_height, w, h, padx=abs(offset[0]), pady=abs(offset[1]))
                 start = time.time()
