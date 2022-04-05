@@ -242,6 +242,7 @@ def trans_paste(bg_img: np.ndarray, fg_img: np.ndarray, mask: np.ndarray, bbox: 
             bg_img[pos_y:pos_y + h, pos_x:pos_x + w, :] = \
                 bg_img[pos_y:pos_y + h, pos_x:pos_x + w, :] * (np.ones_like(mask) - mask) + \
                 fg_img * mask * shadow_prop + bg_img[pos_y:pos_y + h, pos_x:pos_x + w, :] * mask * (1 - shadow_prop)
+            # fg_img * mask * shadow_prop + bg_img[pos_y:pos_y + h, pos_x:pos_x + w, :] * mask * (1 - shadow_prop)
         else:
             bg_img[pos_y:pos_y + h, pos_x:pos_x + w, :] = \
                 bg_img[pos_y:pos_y + h, pos_x:pos_x + w, :] * (np.ones_like(mask) - mask) + fg_img * mask
@@ -349,8 +350,8 @@ def create_image(output_dir, output_dir2, object_category_paths, level_dict, ima
                 mask_l = mask.convert('L')
                 w, h = obj.width, obj.height
                 offset = []  # for shadow
-                offset.append(np.random.randint(5, 15) * get_random_pos_neg())  # right offset
-                offset.append(np.random.randint(10, 40) * get_random_pos_neg())  # down offset
+                offset.append(np.random.randint(5, 50) * get_random_pos_neg())  # right offset
+                offset.append(np.random.randint(10, 50) * get_random_pos_neg())  # down offset
 
                 pos_x, pos_y = generated_position(bg_width, bg_height, w, h, padx=abs(offset[0]), pady=abs(offset[1]))
                 start = time.time()
@@ -366,13 +367,21 @@ def create_image(output_dir, output_dir2, object_category_paths, level_dict, ima
                 obj_cv = np.array(obj)
                 mask_cv = np.array(mask) * 1  # single channel mask
                 mask_cv = np.stack((mask_cv, mask_cv, mask_cv), axis=2)  # RGB mask
-                shadow_indx = random_index = randrange(len(SHADOW_COLOR))
+                blur_mask = mask_cv[:, :, 0].copy() * 255
+                blur_mask.astype('float32')
+                for i in range(20):
+                    blur_mask = cv2.blur(blur_mask, (3,3), cv2.BORDER_DEFAULT)
+                blur_mask = np.divide(blur_mask, np.ones_like(blur_mask).astype('float32')*255)
+                blur_mask = np.stack((blur_mask, blur_mask, blur_mask), axis=2)  # shadow mask
+                # blur_mask = cv2.GaussianBlur(blur_mask, (10, 10), 0)
+                # blur_mask = cv2.GaussianBlur(blur_mask, (10, 10), 0)
+                shadow_indx = randrange(len(SHADOW_COLOR))
                 shadow = Image.new('RGB', (w, h), SHADOW_COLOR[shadow_indx])
                 shodow_cv = np.array(shadow)
 
                 trans_paste(bg_img_cv, obj_cv, mask_cv, bbox=(pos_x, pos_y, w, h), trans=False)
                 # paste shadow
-                trans_paste(bg_img_cv2, shodow_cv, mask_cv, bbox=(pos_x + offset[0], pos_y + offset[1], w, h),
+                trans_paste(bg_img_cv2, shodow_cv, blur_mask, bbox=(pos_x + offset[0], pos_y + offset[1], w, h),
                             trans=True)
                 trans_paste(bg_img_cv2, obj_cv, mask_cv, bbox=(pos_x, pos_y, w, h), trans=False)
 

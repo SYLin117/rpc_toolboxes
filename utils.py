@@ -808,6 +808,19 @@ def coco_strink_data(json_path, save_path, ratio):
     with open(save_path, "w") as outfile:
         json.dump(data, outfile, )
 
+def smoothing_mask():
+    """ test smoothing a mask"""
+    file = '/home/ian/Desktop/iep43.jpg'
+    mask = cv2.imread(file, cv2.IMREAD_GRAYSCALE)
+    _, mask = cv2.threshold(mask, 125, 1, cv2.THRESH_BINARY)
+    cv2.imshow('origin', mask)
+    print(np.unique(mask))
+    new_mask = cv2.blur(mask, (10,10), 0)
+    print(np.unique(new_mask))
+    cv2.imshow('new', new_mask)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
 
 if __name__ == "__main__":
     print("...main...")
@@ -836,13 +849,13 @@ if __name__ == "__main__":
     target_image_folder = os.path.join(dataroot, 'rpc_list/{}_shadow_512'.format(name))
     target_mask_folder = None
     target_json_file = os.path.join(dataroot, 'rpc_list/{}_512.json'.format(name))
-    rescale_coco_data(image_folder=image_folder,
-                      mask_folder=mask_folder,
-                      json_file=json_file,
-                      target_size=512,
-                      target_image_folder=target_image_folder,
-                      target_mask_folder=target_mask_folder,
-                      target_json_file=target_json_file)
+    # rescale_coco_data(image_folder=image_folder,
+    #                   mask_folder=mask_folder,
+    #                   json_file=json_file,
+    #                   target_size=512,
+    #                   target_image_folder=target_image_folder,
+    #                   target_mask_folder=target_mask_folder,
+    #                   target_json_file=target_json_file)
 
     # image_folder = os.path.join(dataroot, 'retail_product_checkout/test2019')
     # mask_folder = None
@@ -908,3 +921,5 @@ if __name__ == "__main__":
     ## ------------------------------------------------------------
     # get_avg_brightness("D:/datasets/rpc_list/synthesize_30000_noshad")
     # get_avg_brightness("D:/datasets/retail_product_checkout/test2019")
+    ## ------------------------------------------------------------
+    smoothing_mask()

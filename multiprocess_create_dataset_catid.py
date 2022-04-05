@@ -29,6 +29,15 @@ from scipy.stats import truncnorm
 import math
 
 
+class DemoException(Exception):
+    """
+    custom exception for find position error
+    """
+
+    def __init__(self, message):
+        super().__init__(message)
+
+
 def get_truncated_normal(mean=0.25, sd=0.05, low=0.0, upp=1.0):
     return truncnorm(
         (low - mean) / sd, (upp - mean) / sd, loc=mean, scale=sd)
@@ -174,12 +183,35 @@ def sample_select_object_index(category, paths, ratio_annotations, threshold=0.5
 
 
 def generated_position(width, height, w, h, padx=0, pady=0):
-    x = random.randint(padx, width - w - padx)
-    y = random.randint(pady, height - h - pady)
-    while x + w > width:
+    """
+
+    Args:
+        width: background width
+        height: background height
+        w: object width
+        h: object height
+        padx: pad of width
+        pady: pad of height
+
+    Returns:
+
+    """
+    try:
         x = random.randint(padx, width - w - padx)
-    while y + h > height:
         y = random.randint(pady, height - h - pady)
+        while x + w > width:
+            x = random.randint(padx, width - w - padx)
+        while y + h > height:
+            y = random.randint(pady, height - h - pady)
+    except:
+        # print("width: ", width)
+        # print("height: ", height)
+        # print("w:", w)
+        # print("h: ", h)
+        # print("padx: ", padx)
+        # print("pady: ", pady)
+        raise DemoException(
+            "width: {}, height: {}, w: {}, h: {}, padx: {}, pady: {}".format(width, height, w, h, padx, pady))
     return x, y
 
 
@@ -360,16 +392,16 @@ def create_image(output_dir, output_dir2, object_category_paths, level_dict, ima
                 offset.append(np.random.randint(5, 15) * get_random_pos_neg())  # right offset
                 offset.append(np.random.randint(10, 40) * get_random_pos_neg())  # down offset
 
-                pos_x, pos_y = generated_position(bg_width, bg_height, w, h, padx=abs(offset[0]), pady=abs(offset[1]))
-                start = time.time()
-                threshold = 0.2
-                while not check_iou(obj_in_this_pic, box=(pos_x, pos_y, w, h), threshold=threshold):
-                    if (time.time() - start) > 1:  # cannot find a valid position in 3 seconds
-                        start = time.time()
-                        threshold += 0.05
-                        continue
-                    pos_x, pos_y = generated_position(bg_width, bg_height, w, h, padx=abs(offset[0]),
-                                                      pady=abs(offset[1]))
+                # pos_x, pos_y = generated_position(bg_width, bg_height, w, h, padx=abs(offset[0]), pady=abs(offset[1]))
+                # start = time.time()
+                # threshold = 0.2
+                # while not check_iou(obj_in_this_pic, box=(pos_x, pos_y, w, h), threshold=threshold):
+                #     if (time.time() - start) > 1:  # cannot find a valid position in 3 seconds
+                #         start = time.time()
+                #         threshold += 0.05
+                #         continue
+                #     pos_x, pos_y = generated_position(bg_width, bg_height, w, h, padx=abs(offset[0]),
+                #                                       pady=abs(offset[1]))
 
                 # 設定offset
                 if i == 0:
@@ -382,8 +414,8 @@ def create_image(output_dir, output_dir2, object_category_paths, level_dict, ima
 
                 if i == 0:
                     if side_by_side:  # 並聯
-                        if (bg_width - 3 * w - 2 * abs(offset[0])) < 0:  # 並聯是否會超過背景寬度
-                            overlap = int((w * 3 + abs(offset[0]) - bg_width) / 2)  # 調整overlap使圖片背景可以容納
+                        if (bg_width - 3 * w - 2 * abs(offset[0])) <= 0:  # 並聯是否會超過背景寬度
+                            overlap = int((w * 3 + abs(offset[0]) - bg_width) / 2) + 50  # 調整overlap使圖片背景可以容納
                             tmp_w = 3 * w - 2 * overlap - abs(offset[0])
                             pos_x, pos_y = generated_position(bg_width, bg_height, tmp_w, h, padx=abs(offset[0]),
                                                               pady=abs(offset[1]))
@@ -392,7 +424,7 @@ def create_image(output_dir, output_dir2, object_category_paths, level_dict, ima
                                                               pady=abs(offset[1]))
                     else:  # 直聯
                         if (bg_height - 3 * h - 2 * abs(offset[1])) <= 0:
-                            overlap = int((h * 3 + abs(offset[1]) - bg_height) / 2)
+                            overlap = int((h * 3 + abs(offset[1]) - bg_height) / 2) + 50
                             tmp_h = 3 * h - 2 * overlap - abs(offset[1])
                             pos_x, pos_y = generated_position(bg_width, bg_height, w, tmp_h, padx=abs(offset[0]),
                                                               pady=abs(offset[1]))
@@ -412,13 +444,21 @@ def create_image(output_dir, output_dir2, object_category_paths, level_dict, ima
                 obj_cv = np.array(obj)
                 mask_cv = np.array(mask) * 1  # single channel mask
                 mask_cv = np.stack((mask_cv, mask_cv, mask_cv), axis=2)  # RGB mask
-                shadow_indx = random_index = randrange(len(SHADOW_COLOR))
+                # ==========shadow mask (blur mask)===============
+                blur_mask = mask_cv[:, :, 0].copy() * 255
+                blur_mask.astype('float32')
+                for i in range(5):
+                    blur_mask = cv2.blur(blur_mask, (5, 5), cv2.BORDER_CONSTANT)
+                blur_mask = np.divide(blur_mask, np.ones_like(blur_mask).astype('float32') * 255)
+                blur_mask = np.stack((blur_mask, blur_mask, blur_mask), axis=2)  # shadow mask
+                ## ===============================================
+                shadow_indx = randrange(len(SHADOW_COLOR))
                 shadow = Image.new('RGB', (w, h), SHADOW_COLOR[shadow_indx])
                 shodow_cv = np.array(shadow)
 
                 trans_paste(bg_img_cv, obj_cv, mask_cv, bbox=(pos_x, pos_y, w, h), trans=False)
                 # paste shadow
-                trans_paste(bg_img_cv2, shodow_cv, mask_cv, bbox=(pos_x + offset[0], pos_y + offset[1], w, h),
+                trans_paste(bg_img_cv2, shodow_cv, blur_mask, bbox=(pos_x + offset[0], pos_y + offset[1], w, h),
                             trans=True)
                 trans_paste(bg_img_cv2, obj_cv, mask_cv, bbox=(pos_x, pos_y, w, h), trans=False)
 
@@ -590,9 +630,9 @@ if __name__ == '__main__':
     parser = ArgumentParser(description="Synthesize fake images")
     parser.add_argument('--gen_num', type=int, default=100,
                         help='how many number of images need to create.')
-    parser.add_argument('--suffix', type=str, default='train',
+    parser.add_argument('--suffix', type=str, default='single',
                         help='suffix for image folder and json file')
-    parser.add_argument('--thread', type=int, default=4,
+    parser.add_argument('--thread', type=int, default=1,
                         help='using how many thread to create')
     parser.add_argument('--chg_bg', type=bool, default=False,
                         help='use multiple background or not.')

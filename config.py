@@ -17,8 +17,8 @@ class Config:
             # Windows...
             self.datasets_root = str(Path(r'D:\datasets'))
 
-        self.camera_angles = ['1', '3']
-        self.rotate_angles = ['3', '18', '28']
+        self.camera_angles = ['0', '1', '3','2']
+        self.rotate_angles = ['0','11', '21','32']
         # self.img_filters = ['*camera0-10*.jpg', '*camera0-30*.jpg', '*camera1-10*.jpg', ]
         self.img_filters = list()
         for ca in self.camera_angles:

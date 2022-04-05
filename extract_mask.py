@@ -61,7 +61,7 @@ def do_extract(path, model_name='unet', morph_it=10):
     tracer_cfg = tracer.getConfig()
     if net is None:
         if model_name == 'u2net':
-            model_dir = 'weights/u2net_best.pth'
+            model_dir = 'weights/u2net_best2.pth'
             net = U2NET(in_ch=3, out_ch=1)
         elif model_name == 'unet':
             model_dir = 'weights/unet.pth'
@@ -124,17 +124,28 @@ def do_extract(path, model_name='unet', morph_it=10):
     pred = pred * 255
     pred.astype(np.uint8)
     ret, thresh = cv2.threshold(pred, 125, 255, cv2.THRESH_BINARY)
-    thresh = np.array(thresh, np.uint8)
+    thresh = np.array(thresh, np.uint8) # original thresh
+    # ========================================= this mask is use for paper =====================================================
+    thresh_stack_origin = np.stack((thresh,) * 3, axis=-1)
+    thresh_stack_origin = cv2.resize(thresh_stack_origin, (crop_x2 - crop_x1, crop_y2 - crop_y1), interpolation=cv2.INTER_AREA)
+    filled_origin = cv2.cvtColor(thresh_stack_origin, cv2.COLOR_BGR2GRAY)
+    filled_origin = filled_origin / 255
+    # ===========================================================================================================
     ## perform morphological operation
     # rect_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 30))
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     threshed = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=morph_it)
     thresh_stack = np.stack((threshed,) * 3, axis=-1)
     ### 利用contour將多個區塊連起來
-    # Contours, Hierarchy = cv2.findContours(threshed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    # for cnt in Contours:
-    #     hull = cv2.convexHull(cnt)
-    #     cv2.drawContours(thresh_stack, [hull], -1, color=(255, 255, 255), thickness=cv2.FILLED)
+    ## ============================ this part is use for paper =============================================
+    thresh_convex = threshed.copy()
+    Contours, Hierarchy = cv2.findContours(thresh_convex, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    for cnt in Contours:
+        hull = cv2.convexHull(cnt)
+        cv2.drawContours(thresh_convex, [hull], -1, color=(255, 255, 255), thickness=cv2.FILLED)
+    filled_convex = cv2.resize(thresh_convex, (crop_x2 - crop_x1, crop_y2 - crop_y1), interpolation=cv2.INTER_AREA)
+    filled_convex = filled_convex / 255
+    ## =====================================================================================================
     thresh_stack = cv2.resize(thresh_stack, (crop_x2 - crop_x1, crop_y2 - crop_y1), interpolation=cv2.INTER_AREA)
     filled = cv2.cvtColor(thresh_stack, cv2.COLOR_BGR2GRAY)
     filled = filled / 255
@@ -153,13 +164,19 @@ def do_extract(path, model_name='unet', morph_it=10):
     cv2.imwrite(os.path.join(output_dir, os.path.basename(path).split('.')[0] + '.png'),
                 save_image)  ## original image size mask
 
-    masked_img = origin_img * filled[:, :, None]
+    # masked_img = origin_img * filled[:, :, None] # should use this
+    masked_img = origin_img * filled_convex[:, :, None] # for paper
     compare_img = np.concatenate([origin_img, masked_img], axis=1)
     cv2.imwrite(os.path.join(compare_dir, os.path.basename(path)), compare_img)
 
-    # cv2.imwrite(os.path.join(crop_dir, os.path.basename(path)), origin_img)  # crop images
-    # cv2.imwrite(os.path.join(crop_mask_dir, os.path.basename(path).split('.')[0] + '.png'),
-    #             np.array(filled * 255, dtype=np.uint8))
+    cv2.imwrite(os.path.join(crop_dir, os.path.basename(path)), origin_img)  # crop images
+    cv2.imwrite(os.path.join(crop_mask_dir, os.path.basename(path).split('.')[0] + '.png'),
+                np.array(filled * 255, dtype=np.uint8))
+    # image for paper
+    cv2.imwrite(os.path.join(crop_mask_origin_dir, os.path.basename(path).split('.')[0] + '.png'),
+                    np.array(filled_origin * 255, dtype=np.uint8))
+    cv2.imwrite(os.path.join(crop_mask_convex_dir, os.path.basename(path).split('.')[0] + '.png'),
+                np.array(filled_convex * 255, dtype=np.uint8))
 
 
 def extract(paths, model_name='unet', morph_it=10):
@@ -203,10 +220,10 @@ if __name__ == '__main__':
     DATASET_ROOT = config.get_dataset_root()
     parser = ArgumentParser(description="Extract masks")
     parser.add_argument('--ann_file', type=str,
-                        default=os.path.join(DATASET_ROOT, 'RPC_DATASET', 'retail_product_checkout',
+                        default=os.path.join(DATASET_ROOT, 'retail_product_checkout',
                                              'instances_train2019.json'))
     parser.add_argument('--images_dir', type=str,
-                        default=os.path.join(DATASET_ROOT, 'RPC_DATASET', 'retail_product_checkout', 'train2019'))
+                        default=os.path.join(DATASET_ROOT, 'retail_product_checkout', 'train2019'))
     parser.add_argument('--model_file', type=str, default='model.yml.gz')
     parser.add_argument('--caffemodel', type=str, default='hed_pretrained_bsds.caffemodel')
     parser.add_argument('--prototxt', type=str, default='deploy.prototxt')
@@ -222,12 +239,14 @@ if __name__ == '__main__':
         annotations[images[x['image_id']]['file_name']] = x
 
     morph_it = 10
-    model_name = 'tracer5'
-    extract_root = 'extracted_masks_{}_morph{}'.format(model_name, morph_it)
+    model_name = 'u2net'
+    extract_root = 'for_paper'.format(model_name, morph_it)
     output_dir = '{}/masks'.format(extract_root)
     compare_dir = '{}/masked_images'.format(extract_root)
     crop_dir = '{}/crop_images'.format(extract_root)
     crop_mask_dir = '{}/crop_masks'.format(extract_root)
+    crop_mask_origin_dir = '{}/crop_masks_origin'.format(extract_root)
+    crop_mask_convex_dir = '{}/crop_masks_convex'.format(extract_root)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -239,6 +258,9 @@ if __name__ == '__main__':
 
     if not os.path.exists(crop_mask_dir):
         os.makedirs(crop_mask_dir)
+
+    os.makedirs(crop_mask_origin_dir, exist_ok=True)
+    os.makedirs(crop_mask_convex_dir, exist_ok=True)
 
     categories = [i + 1 for i in range(200)]
 
