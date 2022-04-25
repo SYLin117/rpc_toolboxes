@@ -27,6 +27,7 @@ import torchvision.transforms as T
 import tracer
 
 from PIL import Image
+import secrets
 
 RPC_CLASSES = (
     '1_puffed_food', '2_puffed_food', '3_puffed_food', '4_puffed_food', '5_puffed_food',
@@ -808,6 +809,7 @@ def coco_strink_data(json_path, save_path, ratio):
     with open(save_path, "w") as outfile:
         json.dump(data, outfile, )
 
+
 def smoothing_mask():
     """ test smoothing a mask"""
     file = '/home/ian/Desktop/iep43.jpg'
@@ -815,11 +817,30 @@ def smoothing_mask():
     _, mask = cv2.threshold(mask, 125, 1, cv2.THRESH_BINARY)
     cv2.imshow('origin', mask)
     print(np.unique(mask))
-    new_mask = cv2.blur(mask, (10,10), 0)
+    new_mask = cv2.blur(mask, (10, 10), 0)
     print(np.unique(new_mask))
     cv2.imshow('new', new_mask)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
+
+
+def modify_json_for_coco_annotator(json_path):
+    with open(json_path, "r") as fid:
+        data = json.load(fid, )
+    categories = data['categories']
+    datasets = data['datasets']
+
+    cat_names = []
+    for cat in categories:
+        del cat['id']
+        cat_names.append(cat['name'])
+        rgb = f"#{secrets.token_hex(3)}"
+        cat['color'] = rgb
+    dataset = datasets[0]
+    dataset['categories'] = cat_names
+
+    with open('categories_coco_annotator_init.json', "w") as fid:
+        json.dump(data, fid, )
 
 
 if __name__ == "__main__":
@@ -842,13 +863,13 @@ if __name__ == "__main__":
     config = Config()
     dataroot = config.get_dataset_root()
 
-    name = 'synthesize_24000_train'
-    image_folder = os.path.join(dataroot, 'rpc_list/{}_shadow'.format(name))
-    mask_folder = None
-    json_file = os.path.join(dataroot, 'rpc_list/{}.json'.format(name))
-    target_image_folder = os.path.join(dataroot, 'rpc_list/{}_shadow_512'.format(name))
-    target_mask_folder = None
-    target_json_file = os.path.join(dataroot, 'rpc_list/{}_512.json'.format(name))
+    # name = 'synthesize_6000_train'
+    # image_folder = os.path.join(dataroot, 'rpc_list/{}'.format(name))
+    # mask_folder = None
+    # json_file = os.path.join(dataroot, 'rpc_list/{}.json'.format(name))
+    # target_image_folder = os.path.join(dataroot, 'rpc_list/{}_512'.format(name))
+    # target_mask_folder = None
+    # target_json_file = os.path.join(dataroot, 'rpc_list/{}_512.json'.format(name))
     # rescale_coco_data(image_folder=image_folder,
     #                   mask_folder=mask_folder,
     #                   json_file=json_file,
@@ -922,4 +943,7 @@ if __name__ == "__main__":
     # get_avg_brightness("D:/datasets/rpc_list/synthesize_30000_noshad")
     # get_avg_brightness("D:/datasets/retail_product_checkout/test2019")
     ## ------------------------------------------------------------
-    smoothing_mask()
+    # smoothing_mask()
+    ## ------------------------------------------------------------
+    # shutil.copyfile('/media/ian/WD/datasets/retail_product_checkout/annotations/categories.json', 'categories_coco_annotator.json')
+    modify_json_for_coco_annotator('categories_coco_annotator.json')
