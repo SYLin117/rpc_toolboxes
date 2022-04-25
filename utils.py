@@ -823,7 +823,6 @@ def smoothing_mask():
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-
 def modify_json_for_coco_annotator(json_path):
     with open(json_path, "r") as fid:
         data = json.load(fid, )
@@ -841,7 +840,6 @@ def modify_json_for_coco_annotator(json_path):
 
     with open('categories_coco_annotator_init.json', "w") as fid:
         json.dump(data, fid, )
-
 
 if __name__ == "__main__":
     print("...main...")
@@ -863,11 +861,11 @@ if __name__ == "__main__":
     config = Config()
     dataroot = config.get_dataset_root()
 
-    # name = 'synthesize_6000_train'
-    # image_folder = os.path.join(dataroot, 'rpc_list/{}'.format(name))
+    # name = 'synthesize_24000_train'
+    # image_folder = os.path.join(dataroot, 'rpc_list/{}_shadow'.format(name))
     # mask_folder = None
     # json_file = os.path.join(dataroot, 'rpc_list/{}.json'.format(name))
-    # target_image_folder = os.path.join(dataroot, 'rpc_list/{}_512'.format(name))
+    # target_image_folder = os.path.join(dataroot, 'rpc_list/{}_shadow_512'.format(name))
     # target_mask_folder = None
     # target_json_file = os.path.join(dataroot, 'rpc_list/{}_512.json'.format(name))
     # rescale_coco_data(image_folder=image_folder,
@@ -947,3 +945,11 @@ if __name__ == "__main__":
     ## ------------------------------------------------------------
     # shutil.copyfile('/media/ian/WD/datasets/retail_product_checkout/annotations/categories.json', 'categories_coco_annotator.json')
     modify_json_for_coco_annotator('categories_coco_annotator.json')
+    ## ------------------------------------------------------------
+    # coco_shrink_data(json_path='D:/datasets/retail_product_checkout/instances_val2019.json',
+    #                  save_path='D:/datasets/retail_product_checkout/instances_val2019_quarter.json',
+    #                  ratio=0.75)
+    ## ------------------------------------------------------------
+    # resize_folder(r'D:\datasets\rpc_list\synthesize_6000_final(cut)')
+    # resize_folder(r'D:\datasets\rpc_list\synthesize_6000_final(cyclegan)')
+    # resize_folder(r'D:\datasets\rpc_list\synthesize_6000_final(sc)')
