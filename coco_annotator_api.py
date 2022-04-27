@@ -8,7 +8,7 @@ def delete_all_cat():
                                   json={'username': 'admin', 'password': 'password'})
 
     if login_request.status_code == 200:
-        for id in range(202):
+        for id in range(500):
             request = requests.delete(f'http://192.168.50.75:5000/api/category/{id}',
                                       cookies=login_request.cookies)
             if request.status_code != 200:
@@ -35,5 +35,5 @@ def add_cat_all():
 
 
 if __name__ == "__main__":
-    add_cat_all()
-    # delete_all_cat()
+    # add_cat_all()
+    delete_all_cat()

@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 
 def sort_ann_by_img(json_path):
-    with open(json_path) as fid:
+    with open(json_path, 'r', encoding="utf-8") as fid:
         data = json.load(fid)
     images = OrderedDict()
     for x in data['images']:
@@ -18,15 +18,24 @@ def sort_ann_by_img(json_path):
     return annotations, images
 
 
+# 提取一些基本訊息
 demo_json_path = os.path.join('D:/datasets/retail_product_checkout', 'instances_train2019.json')
 with open(demo_json_path) as fid:
     demo_data = json.load(fid)
 
-json_list = [os.path.join('D:/datasets/retail_product_checkout', 'instances_val2019_removed.json'),
-             os.path.join('D:/datasets/rpc_list/synthesize_30000_shad.json'), ]
-img_list = [os.path.join('D:/datasets/retail_product_checkout', 'val2019'),
-            os.path.join('D:/datasets/rpc_list/synthesize_30000_shad'), ]
-save_path = 'D:/datasets/rpc_list/val_removed_add_shad'
+json_list = [
+    # os.path.join('D:/datasets/retail_product_checkout', 'instances_val2019_quarter.json'),
+    r'D:/datasets/rpc_list/synthesize_6000_train.json',
+    r'D:/datasets/rpc_list/synthesize_6000_final.json',
+
+]
+img_list = [
+    # os.path.join('D:/datasets/retail_product_checkout', 'val2019'),
+    r'D:/datasets/rpc_list/synthesize_6000_train',
+    r'D:/datasets/rpc_list/synthesize_6000_final(sc)',
+
+]
+save_path = 'D:/datasets/rpc_list/synthesize_train_final(sc)'
 os.makedirs(save_path, exist_ok=True)
 new_json = defaultdict()
 new_images = list()
