@@ -415,7 +415,7 @@ def create_image(output_dir, output_dir2, object_category_paths, level_dict, ima
                 if i == 0:
                     if side_by_side:  # 並聯
                         if (bg_width - 3 * w - 2 * abs(offset[0])) <= 0:  # 並聯是否會超過背景寬度
-                            overlap = int((w * 3 + abs(offset[0]) - bg_width) / 2) + 50  # 調整overlap使圖片背景可以容納
+                            overlap = int((w * 3 + abs(offset[0]) - bg_width) / 2) + 100  # 調整overlap使圖片背景可以容納
                             tmp_w = 3 * w - 2 * overlap - abs(offset[0])
                             pos_x, pos_y = generated_position(bg_width, bg_height, tmp_w, h, padx=abs(offset[0]),
                                                               pady=abs(offset[1]))
@@ -424,7 +424,7 @@ def create_image(output_dir, output_dir2, object_category_paths, level_dict, ima
                                                               pady=abs(offset[1]))
                     else:  # 直聯
                         if (bg_height - 3 * h - 2 * abs(offset[1])) <= 0:
-                            overlap = int((h * 3 + abs(offset[1]) - bg_height) / 2) + 50
+                            overlap = int((h * 3 + abs(offset[1]) - bg_height) / 2) + 100
                             tmp_h = 3 * h - 2 * overlap - abs(offset[1])
                             pos_x, pos_y = generated_position(bg_width, bg_height, w, tmp_h, padx=abs(offset[0]),
                                                               pady=abs(offset[1]))
@@ -632,7 +632,7 @@ if __name__ == '__main__':
                         help='how many number of images need to create.')
     parser.add_argument('--suffix', type=str, default='single',
                         help='suffix for image folder and json file')
-    parser.add_argument('--thread', type=int, default=1,
+    parser.add_argument('--thread', type=int, default=10,
                         help='using how many thread to create')
     parser.add_argument('--chg_bg', type=bool, default=False,
                         help='use multiple background or not.')

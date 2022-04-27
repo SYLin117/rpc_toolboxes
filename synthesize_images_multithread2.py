@@ -1,5 +1,6 @@
 # ==========================
 # 使用multithread製作偽造影像
+# add drop shadow when create
 # ==========================
 import glob
 import json

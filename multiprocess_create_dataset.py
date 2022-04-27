@@ -357,7 +357,7 @@ def create_image(output_dir, output_dir2, object_category_paths, level_dict, ima
                 start = time.time()
                 threshold = 0.2
                 while not check_iou(obj_in_this_pic, box=(pos_x, pos_y, w, h), threshold=threshold):
-                    if (time.time() - start) > 1:  # cannot find a valid position in 3 seconds
+                    if (time.time() - start) > 5:  # cannot find a valid position in 3 seconds
                         start = time.time()
                         threshold += 0.05
                         continue
@@ -369,8 +369,8 @@ def create_image(output_dir, output_dir2, object_category_paths, level_dict, ima
                 mask_cv = np.stack((mask_cv, mask_cv, mask_cv), axis=2)  # RGB mask
                 blur_mask = mask_cv[:, :, 0].copy() * 255
                 blur_mask.astype('float32')
-                for i in range(20):
-                    blur_mask = cv2.blur(blur_mask, (3,3), cv2.BORDER_DEFAULT)
+                for i in range(5):
+                    blur_mask = cv2.blur(blur_mask, (3,3), cv2.BORDER_CONSTANT)
                 blur_mask = np.divide(blur_mask, np.ones_like(blur_mask).astype('float32')*255)
                 blur_mask = np.stack((blur_mask, blur_mask, blur_mask), axis=2)  # shadow mask
                 # blur_mask = cv2.GaussianBlur(blur_mask, (10, 10), 0)

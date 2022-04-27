@@ -827,22 +827,25 @@ def modify_json_for_coco_annotator(json_path):
     with open(json_path, "r") as fid:
         data = json.load(fid, )
     categories = data['categories']
-    datasets = data['datasets']
 
-    cat_names = []
-    for cat in categories:
-        del cat['id']
-        cat_names.append(cat['name'])
-        rgb = f"#{secrets.token_hex(3)}"
-        cat['color'] = rgb
-    dataset = datasets[0]
-    dataset['categories'] = cat_names
+    new_data = {}
+    new_data['categories'] = categories
+    # cat_names = []
+    # for cat in categories:
+    #     del cat['id']
+    #     cat_names.append(cat['name'])
+    #     rgb = f"#{secrets.token_hex(3)}"
+    #     cat['color'] = rgb
+    # dataset = datasets[0]
+    # dataset['categories'] = cat_names
 
-    with open('categories_coco_annotator_init.json', "w") as fid:
-        json.dump(data, fid, )
+    with open('initializer.json', "w") as fid:
+        json.dump(new_data, fid, )
 
 if __name__ == "__main__":
     print("...main...")
+    config = Config()
+    dataroot = config.get_dataset_root()
     # find_items()
     # get_sizeof_product()
     # extract_val_obj()
@@ -858,9 +861,6 @@ if __name__ == "__main__":
     # check_ann_duplicate_id('/media/ian/WD/datasets/rpc_list/sod_synthesize_15000_0.json')
     ## ---------------------------------------
     ### resize coco dataset (include json file, masks and images)
-    config = Config()
-    dataroot = config.get_dataset_root()
-
     # name = 'synthesize_24000_train'
     # image_folder = os.path.join(dataroot, 'rpc_list/{}_shadow'.format(name))
     # mask_folder = None
@@ -943,8 +943,8 @@ if __name__ == "__main__":
     ## ------------------------------------------------------------
     # smoothing_mask()
     ## ------------------------------------------------------------
-    # shutil.copyfile('/media/ian/WD/datasets/retail_product_checkout/annotations/categories.json', 'categories_coco_annotator.json')
-    modify_json_for_coco_annotator('categories_coco_annotator.json')
+    # shutil.copyfile('/media/ian/WD/datasets/retail_product_checkout/annotations/instances_val2019.json', 'initializer.json')
+    modify_json_for_coco_annotator('initializer.json')
     ## ------------------------------------------------------------
     # coco_shrink_data(json_path='D:/datasets/retail_product_checkout/instances_val2019.json',
     #                  save_path='D:/datasets/retail_product_checkout/instances_val2019_quarter.json',
