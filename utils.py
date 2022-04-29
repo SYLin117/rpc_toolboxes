@@ -964,4 +964,6 @@ if __name__ == "__main__":
     # resize_folder(r'D:\datasets\rpc_list\synthesize_6000_final(cut)')
     # resize_folder(r'D:\datasets\rpc_list\synthesize_6000_final(cyclegan)')
     # resize_folder(r'D:\datasets\rpc_list\synthesize_6000_final(sc)')
-    resize_folder(r'/media/ian/WD/datasets/fid_compare/val2019(auto_balance)')
+    # resize_folder(r'D:\datasets\rpc_list\synthesize_6000_final(dualgan)', target_size=1815)
+    # resize_folder(r'/media/ian/WD/datasets/fid_compare/val2019(auto_balance)')
+

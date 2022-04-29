@@ -32,10 +32,10 @@ json_list = [
 img_list = [
     # os.path.join('D:/datasets/retail_product_checkout', 'val2019'),
     r'D:/datasets/rpc_list/synthesize_6000_train',
-    r'D:/datasets/rpc_list/synthesize_6000_final(sc)',
+    r'D:/datasets/rpc_list/synthesize_6000_final(dualgan)',
 
 ]
-save_path = 'D:/datasets/rpc_list/synthesize_train_final(sc)'
+save_path = 'D:/datasets/rpc_list/synthesize_train_final(dualgan)'
 os.makedirs(save_path, exist_ok=True)
 new_json = defaultdict()
 new_images = list()
