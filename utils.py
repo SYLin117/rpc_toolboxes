@@ -823,6 +823,7 @@ def smoothing_mask():
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
+
 def modify_json_for_coco_annotator(json_path):
     with open(json_path, "r") as fid:
         data = json.load(fid, )
@@ -841,6 +842,16 @@ def modify_json_for_coco_annotator(json_path):
 
     with open('initializer.json', "w") as fid:
         json.dump(new_data, fid, )
+
+
+def resize_folder(folder, target_size=512):
+    files = glob.glob(os.path.join(folder, "*.jpg"))
+    for file in tqdm(files):
+        filename = os.path.basename(file)
+        img = Image.open(file)
+        img = img.resize((target_size, target_size), Image.BICUBIC)
+        img.save(file)
+
 
 if __name__ == "__main__":
     print("...main...")
@@ -944,7 +955,7 @@ if __name__ == "__main__":
     # smoothing_mask()
     ## ------------------------------------------------------------
     # shutil.copyfile('/media/ian/WD/datasets/retail_product_checkout/annotations/instances_val2019.json', 'initializer.json')
-    modify_json_for_coco_annotator('initializer.json')
+    # modify_json_for_coco_annotator('initializer.json')
     ## ------------------------------------------------------------
     # coco_shrink_data(json_path='D:/datasets/retail_product_checkout/instances_val2019.json',
     #                  save_path='D:/datasets/retail_product_checkout/instances_val2019_quarter.json',
@@ -953,3 +964,4 @@ if __name__ == "__main__":
     # resize_folder(r'D:\datasets\rpc_list\synthesize_6000_final(cut)')
     # resize_folder(r'D:\datasets\rpc_list\synthesize_6000_final(cyclegan)')
     # resize_folder(r'D:\datasets\rpc_list\synthesize_6000_final(sc)')
+    resize_folder(r'/media/ian/WD/datasets/fid_compare/val2019(auto_balance)')
